@@ -2851,6 +2851,7 @@ Obviously in complex such configurations, the Producer may not provide data for 
 </code></pre></div>
 <p>The optional <code>mode</code> option specifies if the pairlist should be used as a <code>blacklist</code> or as a <code>whitelist</code>. The default value is "whitelist".</p>
 <p>The optional <code>processing_mode</code> option in the RemotePairList configuration determines how the retrieved pairlist is processed. It can have two values: "filter" or "append". The default value is "filter".</p>
+<p>The optional <code>number_assets</code> option in the RemotePairList configuration determines how many pairs will be returned if used in whitelist <code>mode</code>. By default, all pairs will be returned. In blacklist <code>mode</code>, this option will be ignored.</p>
 <p>In "filter" mode, the retrieved pairlist is used as a filter. Only the pairs present in both the original pairlist and the retrieved pairlist are included in the final pairlist. Other pairs are filtered out.</p>
 <p>In "append" mode, the retrieved pairlist is added to the original pairlist. All pairs from both lists are included in the final pairlist without any filtering.</p>
 <p>The <code>pairlist_url</code> option specifies the URL of the remote server where the pairlist is located, or the path to a local file (if file:/// is prepended). This allows the user to use either a remote server or a local file as the source for the pairlist.</p>
