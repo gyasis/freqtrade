@@ -1,0 +1,12 @@
+{
+  "session_id": "",
+  "user_id": "gyasis",
+  "project_path": "/home/gyasis/Documents/code/freqtrade",
+  "status": "initialized",
+  "agents": {
+    "main": {"status": "idle"},
+    "memory-keeper": {"status": "idle"},
+    "git-manager": {"status": "idle"}
+  },
+  "initialized_at": "2026-03-16T10:34:40-04:00"
+}
