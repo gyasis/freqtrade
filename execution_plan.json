@@ -1,0 +1,686 @@
+{
+  "execution_plan": {
+    "phase_id": "LATS Implementation",
+    "waves": [
+      {
+        "wave_id": 1,
+        "strategy": "PARALLEL_SWARM",
+        "rationale": "Wave 1: 34 independent task(s) with no file conflicts",
+        "tasks": [
+          {
+            "task_id": "T001",
+            "agent_role": "Developer",
+            "instruction": "T001 Create full directory tree: `user_data/strategies/algo_system/{orchestrator,base,modules/grid_trading,reasoning,safety,config,observability,tests/harness}/`",
+            "file_locks": [],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T001 Create full directory tree: `user_data/strategies/algo_system/{orchestrator,base,modules/grid_trading,reasoning,safety,config,observability,tests/harness}/`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T002",
+            "agent_role": "Developer",
+            "instruction": "T002 [P] Create `user_data/strategies/algo_system/__init__.py` and all sub-package `__init__.py` files (one per directory from T001)",
+            "file_locks": [
+              "user_data/strategies/algo_system/__init__.py",
+              "__init__.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T002 [P] Create `user_data/strategies/algo_system/__init__.py` and all sub-package `__init__.py` files (one per directory from T001)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T003",
+            "agent_role": "Developer",
+            "instruction": "T003 [P] Create `user_data/config_algo_backtest.json` \u2014 sample freqtrade config enabling OrchestratorStrategy with grid module, 6-month BTC/USDT + ETH/USDT data, `position_adjustment_enable: true`, and the `algo_system` config block skeleton (modules_path, active_modules, circuit_breaker, budget entries)",
+            "file_locks": [
+              "user_data/config_algo_backtest.json"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T003 [P] Create `user_data/config_algo_backtest.json` \u2014 sample freqtrade config enabling OrchestratorStrategy with grid module, 6-month BTC/USDT + ETH/USDT data, `position_adjustment_enable: true`, and the `algo_system` config block skeleton (modules_path, active_modules, circuit_breaker, budget entries)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T004",
+            "agent_role": "Developer",
+            "instruction": "T004 [P] Implement `base/ialgo_module.py` \u2014 `ModuleCapability` Enum, `ModuleState` Enum, `VALID_TRANSITIONS` dict, `ModuleSignal` dataclass, `IAlgoModule` ABC with all abstract method signatures from `contracts/ialgo_module_contract.md`",
+            "file_locks": [
+              "base/ialgo_module.py",
+              "contracts/ialgo_module_contract.md"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T004 [P] Implement `base/ialgo_module.py` \u2014 `ModuleCapability` Enum, `ModuleState` Enum, `VALID_TRANSITIONS` dict, `ModuleSignal` dataclass, `IAlgoModule` ABC with all abstract method signatures from `contracts/ialgo_module_contract.md`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T005",
+            "agent_role": "Developer",
+            "instruction": "T005 [P] Implement `base/module_context.py` \u2014 `DataProviderProxy` facade (wraps freqtrade `IDataProvider`), `WalletsProxy` facade (wraps freqtrade `Wallets`), `ModuleContext` dataclass (pair, run_mode, current_time, data_provider, wallets, shared_state, reasoning_hints, logger, module_id)",
+            "file_locks": [
+              "base/module_context.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T005 [P] Implement `base/module_context.py` \u2014 `DataProviderProxy` facade (wraps freqtrade `IDataProvider`), `WalletsProxy` facade (wraps freqtrade `Wallets`), `ModuleContext` dataclass (pair, run_mode, current_time, data_provider, wallets, shared_state, reasoning_hints, logger, module_id)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T006",
+            "agent_role": "Developer",
+            "instruction": "T006 [P] Implement `orchestrator/shared_state.py` \u2014 `ModuleStateEntry` TypedDict, `SharedState` class with `get/set/delete` keyed by `(module_id, pair)`, `threading.Lock`, JSON save/load at `user_data/algo_system_state.json`",
+            "file_locks": [
+              "orchestrator/shared_state.py",
+              "user_data/algo_system_state.json",
+              "threading.Lock"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T006 [P] Implement `orchestrator/shared_state.py` \u2014 `ModuleStateEntry` TypedDict, `SharedState` class with `get/set/delete` keyed by `(module_id, pair)`, `threading.Lock`, JSON save/load at `user_data/algo_system_state.json`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T007",
+            "agent_role": "Developer",
+            "instruction": "T007 [P] Implement `safety/circuit_breaker.py` \u2014 `CircuitBreakerStatus` Enum (`ARMED/TRIPPED/COOLING`), `CircuitBreakerState` dataclass, `CircuitBreaker` class with `evaluate(df, current_drawdown_pct)` \u2192 bool, `trip(reason)`, `reset()` methods; thresholds: `max_drawdown_pct`, `price_move_pct`, `price_move_candles` from config",
+            "file_locks": [
+              "safety/circuit_breaker.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T007 [P] Implement `safety/circuit_breaker.py` \u2014 `CircuitBreakerStatus` Enum (`ARMED/TRIPPED/COOLING`), `CircuitBreakerState` dataclass, `CircuitBreaker` class with `evaluate(df, current_drawdown_pct)` \u2192 bool, `trip(reason)`, `reset()` methods; thresholds: `max_drawdown_pct`, `price_move_pct`, `price_move_candles` from config' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T008",
+            "agent_role": "Developer",
+            "instruction": "T008 [P] Implement `orchestrator/algo_lifecycle.py` \u2014 `AlgoLifecycleSM` managing `Dict[str, Dict[str, ModuleState]]` (module_id \u2192 pair \u2192 state); `transition(module_id, pair, new_state)` validating against `VALID_TRANSITIONS`; `MANAGED_STATES` check helpers",
+            "file_locks": [
+              "orchestrator/algo_lifecycle.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T008 [P] Implement `orchestrator/algo_lifecycle.py` \u2014 `AlgoLifecycleSM` managing `Dict[str, Dict[str, ModuleState]]` (module_id \u2192 pair \u2192 state); `transition(module_id, pair, new_state)` validating against `VALID_TRANSITIONS`; `MANAGED_STATES` check helpers' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T009",
+            "agent_role": "Developer",
+            "instruction": "T009 [P] Implement `orchestrator/budget_allocator.py` \u2014 `ModuleBudget` dataclass, `BudgetAllocator` class with `register_module(module_id, max_open_trades, stake_pct)`, `can_open_trade(module_id, proposed_stake, total_capital)` \u2192 bool, `record_open(module_id, stake)`, `record_close(module_id, stake)`",
+            "file_locks": [
+              "orchestrator/budget_allocator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T009 [P] Implement `orchestrator/budget_allocator.py` \u2014 `ModuleBudget` dataclass, `BudgetAllocator` class with `register_module(module_id, max_open_trades, stake_pct)`, `can_open_trade(module_id, proposed_stake, total_capital)` \u2192 bool, `record_open(module_id, stake)`, `record_close(module_id, stake)`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T010",
+            "agent_role": "Developer",
+            "instruction": "T010 [P] Implement `orchestrator/signal_arbiter.py` \u2014 `SignalArbiter` with priority list (`priority_order: List[str]`), `arbitrate(signals: Dict[str, ModuleSignal], routing_decision: Optional[RoutingDecision])` \u2192 `Tuple[str, ModuleSignal]` (winner_id, winning_signal); logs all resolutions with rationale",
+            "file_locks": [
+              "orchestrator/signal_arbiter.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T010 [P] Implement `orchestrator/signal_arbiter.py` \u2014 `SignalArbiter` with priority list (`priority_order: List[str]`), `arbitrate(signals: Dict[str, ModuleSignal], routing_decision: Optional[RoutingDecision])` \u2192 `Tuple[str, ModuleSignal]` (winner_id, winning_signal); logs all resolutions with rationale' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T011",
+            "agent_role": "Developer",
+            "instruction": "T011 [P] Implement `reasoning/reasoning_interface.py` \u2014 `IReasoningEngine` ABC with `initialize`, `score_modules`, `get_routing_decision`, `shutdown` from `contracts/reasoning_engine_contract.md`; `RoutingDecision` dataclass with `is_expired()` and `tick()` methods",
+            "file_locks": [
+              "reasoning/reasoning_interface.py",
+              "contracts/reasoning_engine_contract.md"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T011 [P] Implement `reasoning/reasoning_interface.py` \u2014 `IReasoningEngine` ABC with `initialize`, `score_modules`, `get_routing_decision`, `shutdown` from `contracts/reasoning_engine_contract.md`; `RoutingDecision` dataclass with `is_expired()` and `tick()` methods' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T012",
+            "agent_role": "Developer",
+            "instruction": "T012 Implement `config/algo_config_schema.py` \u2014 `AlgoSystemConfig` TypedDict, `ReasoningConfig`, `CircuitBreakerConfig`, `SharedStateConfig`, `ObservabilityConfig`; `validate_algo_config(config: dict) -> AlgoSystemConfig` raising `ValueError` on missing/invalid keys \u2014 called at bot startup",
+            "file_locks": [
+              "config/algo_config_schema.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T012 Implement `config/algo_config_schema.py` \u2014 `AlgoSystemConfig` TypedDict, `ReasoningConfig`, `CircuitBreakerConfig`, `SharedStateConfig`, `ObservabilityConfig`; `validate_algo_config(config: dict) -> AlgoSystemConfig` raising `ValueError` on missing/invalid keys \u2014 called at bot startup' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T013",
+            "agent_role": "Developer",
+            "instruction": "T013 [P] [US1] Implement `modules/grid_trading/grid_calculator.py` \u2014 `GridCalculator` (stateless): `calculate_levels(lower, upper, count) -> List[float]` (evenly spaced ascending), `get_crossed_levels_down(from_price, to_price, levels) -> List[float]` (buy triggers), `get_crossed_levels_up(from_price, to_price, levels, filled) -> List[float]` (sell triggers), `validate_grid(lower, upper, count)` raising `ValueError` if `count < 2` or bounds invalid",
+            "file_locks": [
+              "modules/grid_trading/grid_calculator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T013 [P] [US1] Implement `modules/grid_trading/grid_calculator.py` \u2014 `GridCalculator` (stateless): `calculate_levels(lower, upper, count) -> List[float]` (evenly spaced ascending), `get_crossed_levels_down(from_price, to_price, levels) -> List[float]` (buy triggers), `get_crossed_levels_up(from_price, to_price, levels, filled) -> List[float]` (sell triggers), `validate_grid(lower, upper, count)` raising `ValueError` if `count < 2` or bounds invalid' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T014",
+            "agent_role": "Developer",
+            "instruction": "T014 [P] [US1] Implement `modules/grid_trading/grid_state.py` \u2014 `GridState` dataclass: `pair, upper_bound, lower_bound, grid_count, grid_levels, filled_levels, initial_entry_price, created_at, last_updated`; `is_level_filled`, `mark_filled`, `mark_unfilled`, `is_in_range` methods; `to_dict()` / `from_dict()` for SharedState persistence",
+            "file_locks": [
+              "modules/grid_trading/grid_state.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T014 [P] [US1] Implement `modules/grid_trading/grid_state.py` \u2014 `GridState` dataclass: `pair, upper_bound, lower_bound, grid_count, grid_levels, filled_levels, initial_entry_price, created_at, last_updated`; `is_level_filled`, `mark_filled`, `mark_unfilled`, `is_in_range` methods; `to_dict()` / `from_dict()` for SharedState persistence' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T015",
+            "agent_role": "Developer",
+            "instruction": "T015 [US1] Implement `modules/grid_trading/grid_trading_module.py` \u2014 `GridTradingModule(IAlgoModule)`: class vars (`module_id=\"grid_trading_v1\"`, all `ModuleCapability` flags); `initialize` validates config and instantiates `GridCalculator`; `populate_indicators` adds `_grid_trading_v1_adx` column via `talib.ADX(14)`; `generate_entry_signal` returns initial entry signal when no grid exists; `adjust_position` calls calculator to detect level crossings and returns stake/partial-sell tuples; `on_order_filled` calls `grid_state.mark_filled(level)`; `shutdown` persists all GridState to SharedState",
+            "file_locks": [
+              "talib.ADX",
+              "modules/grid_trading/grid_trading_module.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T015 [US1] Implement `modules/grid_trading/grid_trading_module.py` \u2014 `GridTradingModule(IAlgoModule)`: class vars (`module_id=\"grid_trading_v1\"`, all `ModuleCapability` flags); `initialize` validates config and instantiates `GridCalculator`; `populate_indicators` adds `_grid_trading_v1_adx` column via `talib.ADX(14)`; `generate_entry_signal` returns initial entry signal when no grid exists; `adjust_position` calls calculator to detect level crossings and returns stake/partial-sell tuples; `on_order_filled` calls `grid_state.mark_filled(level)`; `shutdown` persists all GridState to SharedState' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T016",
+            "agent_role": "Developer",
+            "instruction": "T016 [US1] Implement `orchestrator/module_registry.py` \u2014 `ModuleRegistry`: `register(module: IAlgoModule)`, `get_active(module_id)`, `get_all_active() -> List[IAlgoModule]`; calls `module.initialize(context)` on registration; enforces `supports_backtest/paper/live` capability check against current `RunMode`",
+            "file_locks": [
+              "orchestrator/module_registry.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T016 [US1] Implement `orchestrator/module_registry.py` \u2014 `ModuleRegistry`: `register(module: IAlgoModule)`, `get_active(module_id)`, `get_all_active() -> List[IAlgoModule]`; calls `module.initialize(context)` on registration; enforces `supports_backtest/paper/live` capability check against current `RunMode`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T017",
+            "agent_role": "Developer",
+            "instruction": "T017 [US1] Implement `orchestrator/orchestrator_strategy.py` (Phase 1 skeleton) \u2014 `OrchestratorStrategy(IStrategy)`: `position_adjustment_enable = True`; `__init__` reads `config[\"algo_system\"]`, calls `validate_algo_config`, instantiates `ModuleRegistry`, `SignalArbiter`, `BudgetAllocator`, `AlgoLifecycleSM`, `CircuitBreaker`, `SharedState`, loads `RuleBasedReasoningEngine` as default; `populate_indicators` fan-out to all active modules via `_safe_module_call`; `populate_entry_trend` / `populate_exit_trend` delegating to arbiter output; `adjust_trade_position` routing to module with signal authority; `_safe_module_call` mirroring `strategy_safe_wrapper` (catch-all, record failure, return default)",
+            "file_locks": [
+              "orchestrator/orchestrator_strategy.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T017 [US1] Implement `orchestrator/orchestrator_strategy.py` (Phase 1 skeleton) \u2014 `OrchestratorStrategy(IStrategy)`: `position_adjustment_enable = True`; `__init__` reads `config[\"algo_system\"]`, calls `validate_algo_config`, instantiates `ModuleRegistry`, `SignalArbiter`, `BudgetAllocator`, `AlgoLifecycleSM`, `CircuitBreaker`, `SharedState`, loads `RuleBasedReasoningEngine` as default; `populate_indicators` fan-out to all active modules via `_safe_module_call`; `populate_entry_trend` / `populate_exit_trend` delegating to arbiter output; `adjust_trade_position` routing to module with signal authority; `_safe_module_call` mirroring `strategy_safe_wrapper` (catch-all, record failure, return default)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T018",
+            "agent_role": "Developer",
+            "instruction": "T018 [P] [US1] Implement `tests/conftest.py` \u2014 `MockModuleContext` factory (creates `ModuleContext` with mock DataProvider, mock Wallets, in-memory SharedState), `make_ohlcv_df(n_candles, price_range)` helper producing realistic DataFrame, `MockDataProvider`, `MockWallets` stubs",
+            "file_locks": [
+              "tests/conftest.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T018 [P] [US1] Implement `tests/conftest.py` \u2014 `MockModuleContext` factory (creates `ModuleContext` with mock DataProvider, mock Wallets, in-memory SharedState), `make_ohlcv_df(n_candles, price_range)` helper producing realistic DataFrame, `MockDataProvider`, `MockWallets` stubs' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T019",
+            "agent_role": "Developer",
+            "instruction": "T019 [P] [US1] Implement `tests/harness/mock_exchange.py` \u2014 minimal exchange stub satisfying freqtrade's `IExchange` for backtest isolation (order book, balance, order fill simulation)",
+            "file_locks": [
+              "tests/harness/mock_exchange.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T019 [P] [US1] Implement `tests/harness/mock_exchange.py` \u2014 minimal exchange stub satisfying freqtrade's `IExchange` for backtest isolation (order book, balance, order fill simulation)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T020",
+            "agent_role": "Developer",
+            "instruction": "T020 [P] [US1] Implement `tests/test_grid_module.py` \u2014 test `calculate_levels` spacing, test `get_crossed_levels_down` for price falling through multiple levels, test `get_crossed_levels_up` for filled levels, test `GridState.mark_filled/unfilled`, test `GridTradingModule.adjust_position` returns correct stake for a level crossing, test out-of-range price produces `None`",
+            "file_locks": [
+              "tests/test_grid_module.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T020 [P] [US1] Implement `tests/test_grid_module.py` \u2014 test `calculate_levels` spacing, test `get_crossed_levels_down` for price falling through multiple levels, test `get_crossed_levels_up` for filled levels, test `GridState.mark_filled/unfilled`, test `GridTradingModule.adjust_position` returns correct stake for a level crossing, test out-of-range price produces `None`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T022",
+            "agent_role": "Developer",
+            "instruction": "T022 [P] [US2] Implement `observability/module_logger.py` \u2014 `get_module_logger(module_id: str, pair: str) -> logging.Logger` factory returning logger named `algo_system.{module_id}.{pair}`; all module methods receive this logger via `ModuleContext`",
+            "file_locks": [
+              "get_module_logger(module_id: str, pair: str) -> logging.Logger",
+              "observability/module_logger.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T022 [P] [US2] Implement `observability/module_logger.py` \u2014 `get_module_logger(module_id: str, pair: str) -> logging.Logger` factory returning logger named `algo_system.{module_id}.{pair}`; all module methods receive this logger via `ModuleContext`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T023",
+            "agent_role": "Developer",
+            "instruction": "T023 [P] [US2] Implement `observability/metrics_collector.py` \u2014 `MetricsCollector` wrapping `DataProvider.send_msg()`: `send_suspension_alert(module_id, pair, reason)`, `send_circuit_breaker_alert(reason, drawdown_pct)`, `send_routing_change(from_module, to_module, pair, rationale)` \u2014 all route to freqtrade Telegram/webhook via `dp.send_msg(msg, always_send=True)`",
+            "file_locks": [
+              "observability/metrics_collector.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T023 [P] [US2] Implement `observability/metrics_collector.py` \u2014 `MetricsCollector` wrapping `DataProvider.send_msg()`: `send_suspension_alert(module_id, pair, reason)`, `send_circuit_breaker_alert(reason, drawdown_pct)`, `send_routing_change(from_module, to_module, pair, rationale)` \u2014 all route to freqtrade Telegram/webhook via `dp.send_msg(msg, always_send=True)`' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T028",
+            "agent_role": "Developer",
+            "instruction": "T028 [US3] Implement `tests/test_circuit_breaker.py` \u2014 test price-move threshold triggers, test drawdown threshold triggers, test ARMED\u2192TRIPPED\u2192COOLING state transitions, test that tripped state produces no signals in orchestrator populate methods, test stoploss column unaffected after trip",
+            "file_locks": [
+              "tests/test_circuit_breaker.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T028 [US3] Implement `tests/test_circuit_breaker.py` \u2014 test price-move threshold triggers, test drawdown threshold triggers, test ARMED\u2192TRIPPED\u2192COOLING state transitions, test that tripped state produces no signals in orchestrator populate methods, test stoploss column unaffected after trip' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T031",
+            "agent_role": "Developer",
+            "instruction": "T031 [US4] Extend `tests/test_orchestrator.py` with budget enforcement tests: quota cap blocks 11th trade when limit=10, stake cap blocks order when utilization full, suspended module quota stays reserved, rejection logged",
+            "file_locks": [
+              "tests/test_orchestrator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T031 [US4] Extend `tests/test_orchestrator.py` with budget enforcement tests: quota cap blocks 11th trade when limit=10, stake cap blocks order when utilization full, suspended module quota stays reserved, rejection logged' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T032",
+            "agent_role": "Developer",
+            "instruction": "T032 [P] [US5] Implement `reasoning/rule_based_reasoning.py` \u2014 `RuleBasedReasoningEngine(IReasoningEngine)`: `score_modules(pair, df, active_module_ids)` returning `Dict[str, float]`; scoring: `+0.7` if `df[\"adx\"].iloc[-1] < 25` (talib ADX-14), `+0.3` if `bb_width < 0.04` (`(bb_upper - bb_lower) / bb_mid` via `qtpylib.bollinger_bands()`), `+0.1` if `40 < rsi < 60` (talib RSI-14), clamped to 1.0; `get_routing_decision` checks TTL via `RoutingDecision.is_expired()` before re-evaluating",
+            "file_locks": [
+              "reasoning/rule_based_reasoning.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T032 [P] [US5] Implement `reasoning/rule_based_reasoning.py` \u2014 `RuleBasedReasoningEngine(IReasoningEngine)`: `score_modules(pair, df, active_module_ids)` returning `Dict[str, float]`; scoring: `+0.7` if `df[\"adx\"].iloc[-1] < 25` (talib ADX-14), `+0.3` if `bb_width < 0.04` (`(bb_upper - bb_lower) / bb_mid` via `qtpylib.bollinger_bands()`), `+0.1` if `40 < rsi < 60` (talib RSI-14), clamped to 1.0; `get_routing_decision` checks TTL via `RoutingDecision.is_expired()` before re-evaluating' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T034",
+            "agent_role": "Developer",
+            "instruction": "T034 [US5] Implement `tests/test_reasoning.py` \u2014 test ADX<25 + narrow BB produces score > 0.7, test ADX>25 produces score < 0.3, test TTL expiry forces re-evaluation, test `get_routing_decision` returns None when all scores below threshold, test rationale string non-empty on routing change",
+            "file_locks": [
+              "tests/test_reasoning.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T034 [US5] Implement `tests/test_reasoning.py` \u2014 test ADX<25 + narrow BB produces score > 0.7, test ADX>25 produces score < 0.3, test TTL expiry forces re-evaluation, test `get_routing_decision` returns None when all scores below threshold, test rationale string non-empty on routing change' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T035",
+            "agent_role": "Developer",
+            "instruction": "T035 [P] [US6] Implement `reasoning/entry_quality_evaluator.py` \u2014 `EntryQualityEvaluator`: `score(pair, df, config) -> Tuple[float, str]` evaluating (a) momentum: if `abs(df[\"close\"].pct_change(N).iloc[-1]) > momentum_threshold` \u2192 penalize score; (b) mean-reversion: if `close` is within `mid_pct` of N-candle range midpoint \u2192 boost score; (c) neutral RSI (40\u201360) \u2192 boost score; returns 0.0\u20131.0 + rationale string",
+            "file_locks": [
+              "reasoning/entry_quality_evaluator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T035 [P] [US6] Implement `reasoning/entry_quality_evaluator.py` \u2014 `EntryQualityEvaluator`: `score(pair, df, config) -> Tuple[float, str]` evaluating (a) momentum: if `abs(df[\"close\"].pct_change(N).iloc[-1]) > momentum_threshold` \u2192 penalize score; (b) mean-reversion: if `close` is within `mid_pct` of N-candle range midpoint \u2192 boost score; (c) neutral RSI (40\u201360) \u2192 boost score; returns 0.0\u20131.0 + rationale string' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T038",
+            "agent_role": "Developer",
+            "instruction": "T038 [P] [US7] Implement `orchestrator/pair_selector.py` \u2014 `PairSelectorCriteria` dataclass (min_daily_volume, max_adx, min_bb_width, max_bb_width); `PairSelector`: `evaluate_pair(pair, df, criteria) -> Tuple[bool, str]` checking each criterion; `update_active_pairs(module_id, whitelist, df_map) -> Tuple[List[str], List[str]]` (added, removed); re-evaluation interval configurable in candles",
+            "file_locks": [
+              "orchestrator/pair_selector.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T038 [P] [US7] Implement `orchestrator/pair_selector.py` \u2014 `PairSelectorCriteria` dataclass (min_daily_volume, max_adx, min_bb_width, max_bb_width); `PairSelector`: `evaluate_pair(pair, df, criteria) -> Tuple[bool, str]` checking each criterion; `update_active_pairs(module_id, whitelist, df_map) -> Tuple[List[str], List[str]]` (added, removed); re-evaluation interval configurable in candles' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T042",
+            "agent_role": "Developer",
+            "instruction": "T042 [P] [US8] Implement `orchestrator/module_resolver.py` \u2014 `ModuleResolver`: `discover_modules(modules_path: str) -> List[Type[IAlgoModule]]` using `importlib.util.spec_from_file_location` + `inspect.getmembers` to find all `IAlgoModule` subclasses not equal to `IAlgoModule` in the scanned files (mirrors `IResolver._get_valid_object` pattern from research R-011)",
+            "file_locks": [
+              "orchestrator/module_resolver.py",
+              "importlib.util",
+              "inspect.getmembers"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T042 [P] [US8] Implement `orchestrator/module_resolver.py` \u2014 `ModuleResolver`: `discover_modules(modules_path: str) -> List[Type[IAlgoModule]]` using `importlib.util.spec_from_file_location` + `inspect.getmembers` to find all `IAlgoModule` subclasses not equal to `IAlgoModule` in the scanned files (mirrors `IResolver._get_valid_object` pattern from research R-011)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T046",
+            "agent_role": "Developer",
+            "instruction": "T046 [P] Add inline docstrings to all public classes and methods in `base/`, `orchestrator/`, `reasoning/`, `safety/` \u2014 focus on contract semantics (what, not how)",
+            "file_locks": [],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T046 [P] Add inline docstrings to all public classes and methods in `base/`, `orchestrator/`, `reasoning/`, `safety/` \u2014 focus on contract semantics (what, not how)' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T047",
+            "agent_role": "Developer",
+            "instruction": "T047 [P] Validate all `enter_tag` values across `GridTradingModule` and any stub modules conform to `\"{module_id}:{reason}\"` format (max 255 chars) \u2014 add assertion in `_safe_module_call` for debug mode",
+            "file_locks": [],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T047 [P] Validate all `enter_tag` values across `GridTradingModule` and any stub modules conform to `\"{module_id}:{reason}\"` format (max 255 chars) \u2014 add assertion in `_safe_module_call` for debug mode' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T048",
+            "agent_role": "Developer",
+            "instruction": "T048 Run full `pytest user_data/strategies/algo_system/tests/` \u2014 assert all tests pass in under 60 seconds",
+            "file_locks": [],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T048 Run full `pytest user_data/strategies/algo_system/tests/` \u2014 assert all tests pass in under 60 seconds' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T049",
+            "agent_role": "Developer",
+            "instruction": "T049 Run `backtest_harness.py` end-to-end on BTC/USDT + ETH/USDT 6-month slice \u2014 assert: (a) completes in < 5 min, (b) all enter_tags prefixed correctly, (c) no module exceeds stake cap",
+            "file_locks": [
+              "backtest_harness.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T049 Run `backtest_harness.py` end-to-end on BTC/USDT + ETH/USDT 6-month slice \u2014 assert: (a) completes in < 5 min, (b) all enter_tags prefixed correctly, (c) no module exceeds stake cap' to [x]",
+            "dependencies": []
+          },
+          {
+            "task_id": "T050",
+            "agent_role": "Developer",
+            "instruction": "T050 [P] Create `user_data/strategies/algo_system/README.md` documenting: how to add a new module (5-step guide using the stub), config schema reference, circuit breaker thresholds, entry quality config fields",
+            "file_locks": [
+              "user_data/strategies/algo_system/README.md"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T050 [P] Create `user_data/strategies/algo_system/README.md` documenting: how to add a new module (5-step guide using the stub), config schema reference, circuit breaker thresholds, entry quality config fields' to [x]",
+            "dependencies": []
+          }
+        ],
+        "checkpoint_after": {
+          "enabled": true,
+          "verification_criteria": "Verify all Wave 1 tasks are marked [x] in tasks.md",
+          "git_agent": "git-version-manager",
+          "memory_bank_agent": "memory-bank-keeper"
+        }
+      },
+      {
+        "wave_id": 2,
+        "strategy": "PARALLEL_SWARM",
+        "rationale": "Wave 2: 9 independent task(s) with no file conflicts",
+        "tasks": [
+          {
+            "task_id": "T021",
+            "agent_role": "Developer",
+            "instruction": "T021 [US1] Implement `tests/harness/backtest_harness.py` \u2014 programmatic `freqtrade.optimize.backtesting.Backtesting` runner loading `user_data/config_algo_backtest.json`; asserts trade count > 0, all enter_tags prefixed `\"grid_trading_v1:\"`, no module exceeds stake cap",
+            "file_locks": [
+              "tests/harness/backtest_harness.py",
+              "freqtrade.optimize.backtesting.Backtesting",
+              "user_data/config_algo_backtest.json"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T021 [US1] Implement `tests/harness/backtest_harness.py` \u2014 programmatic `freqtrade.optimize.backtesting.Backtesting` runner loading `user_data/config_algo_backtest.json`; asserts trade count > 0, all enter_tags prefixed `\"grid_trading_v1:\"`, no module exceeds stake cap' to [x]",
+            "dependencies": [
+              "T003"
+            ]
+          },
+          {
+            "task_id": "T024",
+            "agent_role": "Developer",
+            "instruction": "T024 [US2] Extend `orchestrator/orchestrator_strategy.py` with paper-trading hooks: `bot_start` (calls `module.on_bot_start(ctx)` for all modules), `order_filled` (routes to owning module's `on_order_filled`), integrate `MetricsCollector` for suspension alerts, wire `dp` reference into `MetricsCollector` after DataProvider is ready",
+            "file_locks": [
+              "orchestrator/orchestrator_strategy.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T024 [US2] Extend `orchestrator/orchestrator_strategy.py` with paper-trading hooks: `bot_start` (calls `module.on_bot_start(ctx)` for all modules), `order_filled` (routes to owning module's `on_order_filled`), integrate `MetricsCollector` for suspension alerts, wire `dp` reference into `MetricsCollector` after DataProvider is ready' to [x]",
+            "dependencies": [
+              "T017"
+            ]
+          },
+          {
+            "task_id": "T025",
+            "agent_role": "Developer",
+            "instruction": "T025 [US2] Extend `orchestrator/shared_state.py` disk persistence: `load_from_disk()` on bot start restoring grid states for all pairs, `save_to_disk()` called in `shutdown()` and after each `set()` operation (debounced \u2014 max 1 write/candle); verify restart recovery test in `tests/conftest.py`",
+            "file_locks": [
+              "orchestrator/shared_state.py",
+              "tests/conftest.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T025 [US2] Extend `orchestrator/shared_state.py` disk persistence: `load_from_disk()` on bot start restoring grid states for all pairs, `save_to_disk()` called in `shutdown()` and after each `set()` operation (debounced \u2014 max 1 write/candle); verify restart recovery test in `tests/conftest.py`' to [x]",
+            "dependencies": [
+              "T006",
+              "T018"
+            ]
+          },
+          {
+            "task_id": "T026",
+            "agent_role": "Developer",
+            "instruction": "T026 [US3] Complete `safety/circuit_breaker.py` evaluation logic: `evaluate(df: DataFrame, portfolio_drawdown_pct: float)` checking (a) `price_move_pct` within `price_move_candles` window and (b) `portfolio_drawdown_pct >= max_drawdown_pct`; returns `True` (trip) with `trip_reason` string; `COOLING` state transitions with configurable reset candle count",
+            "file_locks": [
+              "safety/circuit_breaker.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T026 [US3] Complete `safety/circuit_breaker.py` evaluation logic: `evaluate(df: DataFrame, portfolio_drawdown_pct: float)` checking (a) `price_move_pct` within `price_move_candles` window and (b) `portfolio_drawdown_pct >= max_drawdown_pct`; returns `True` (trip) with `trip_reason` string; `COOLING` state transitions with configurable reset candle count' to [x]",
+            "dependencies": [
+              "T007"
+            ]
+          },
+          {
+            "task_id": "T029",
+            "agent_role": "Developer",
+            "instruction": "T029 [US4] Complete `orchestrator/budget_allocator.py`: `can_open_trade` checking both `max_open_trades` and `stake_allocation_pct * total_capital`; `record_suspension(module_id)` marking module as suspended (prevents quota transfer); `get_utilization(module_id)` \u2192 `Dict` for observability; all rejections logged with reason",
+            "file_locks": [
+              "orchestrator/budget_allocator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T029 [US4] Complete `orchestrator/budget_allocator.py`: `can_open_trade` checking both `max_open_trades` and `stake_allocation_pct * total_capital`; `record_suspension(module_id)` marking module as suspended (prevents quota transfer); `get_utilization(module_id)` \u2192 `Dict` for observability; all rejections logged with reason' to [x]",
+            "dependencies": [
+              "T009"
+            ]
+          },
+          {
+            "task_id": "T036",
+            "agent_role": "Developer",
+            "instruction": "T036 [US6] Wire `EntryQualityEvaluator` into `modules/grid_trading/grid_trading_module.py` `generate_entry_signal`: when no grid exists for pair, call `entry_quality_evaluator.score()` \u2192 if below `entry_quality_threshold` (config), return `ModuleSignal()` (no opinion) and log deferred reason; if above threshold, proceed with grid initialization; does NOT affect `adjust_position` on already-active grids",
+            "file_locks": [
+              "modules/grid_trading/grid_trading_module.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T036 [US6] Wire `EntryQualityEvaluator` into `modules/grid_trading/grid_trading_module.py` `generate_entry_signal`: when no grid exists for pair, call `entry_quality_evaluator.score()` \u2192 if below `entry_quality_threshold` (config), return `ModuleSignal()` (no opinion) and log deferred reason; if above threshold, proceed with grid initialization; does NOT affect `adjust_position` on already-active grids' to [x]",
+            "dependencies": [
+              "T015"
+            ]
+          },
+          {
+            "task_id": "T037",
+            "agent_role": "Developer",
+            "instruction": "T037 [US6] Add `entry_quality` block to `config/algo_config_schema.py`: `momentum_lookback_candles: int`, `momentum_threshold: float`, `entry_quality_threshold: float`, `max_defer_candles: int` (emit warning after this many consecutive deferrals); add validation in `validate_algo_config`",
+            "file_locks": [
+              "config/algo_config_schema.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T037 [US6] Add `entry_quality` block to `config/algo_config_schema.py`: `momentum_lookback_candles: int`, `momentum_threshold: float`, `entry_quality_threshold: float`, `max_defer_candles: int` (emit warning after this many consecutive deferrals); add validation in `validate_algo_config`' to [x]",
+            "dependencies": [
+              "T012"
+            ]
+          },
+          {
+            "task_id": "T039",
+            "agent_role": "Developer",
+            "instruction": "T039 [US7] Integrate `PairSelector` into `orchestrator/module_registry.py`: `get_active_pairs_for_module(module_id) -> List[str]`; on `update_active_pairs`, for each removed pair call `AlgoLifecycleSM.transition(module_id, pair, ModuleState.DRAINING)` if pair has open positions; log additions/removals",
+            "file_locks": [
+              "orchestrator/module_registry.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T039 [US7] Integrate `PairSelector` into `orchestrator/module_registry.py`: `get_active_pairs_for_module(module_id) -> List[str]`; on `update_active_pairs`, for each removed pair call `AlgoLifecycleSM.transition(module_id, pair, ModuleState.DRAINING)` if pair has open positions; log additions/removals' to [x]",
+            "dependencies": [
+              "T016"
+            ]
+          },
+          {
+            "task_id": "T041",
+            "agent_role": "Developer",
+            "instruction": "T041 [US7] Extend `tests/test_orchestrator.py` with pair selection tests: trending pair excluded, ranging pair included, removal of active pair triggers draining not force-close, re-evaluation on interval restores qualified pair",
+            "file_locks": [
+              "tests/test_orchestrator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T041 [US7] Extend `tests/test_orchestrator.py` with pair selection tests: trending pair excluded, ranging pair included, removal of active pair triggers draining not force-close, re-evaluation on interval restores qualified pair' to [x]",
+            "dependencies": [
+              "T031"
+            ]
+          }
+        ],
+        "checkpoint_after": {
+          "enabled": true,
+          "verification_criteria": "Verify all Wave 2 tasks are marked [x] in tasks.md",
+          "git_agent": "git-version-manager",
+          "memory_bank_agent": "memory-bank-keeper"
+        }
+      },
+      {
+        "wave_id": 3,
+        "strategy": "PARALLEL_SWARM",
+        "rationale": "Wave 3: 4 independent task(s) with no file conflicts",
+        "tasks": [
+          {
+            "task_id": "T027",
+            "agent_role": "Developer",
+            "instruction": "T027 [US3] Wire `CircuitBreaker` into `orchestrator/orchestrator_strategy.py`: called at top of `populate_entry_trend` and `adjust_trade_position`; when tripped, returns `DataFrame` with no signals set / returns `None` from adjust; calls `MetricsCollector.send_circuit_breaker_alert()`; does NOT modify `custom_stoploss` output",
+            "file_locks": [
+              "orchestrator/orchestrator_strategy.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T027 [US3] Wire `CircuitBreaker` into `orchestrator/orchestrator_strategy.py`: called at top of `populate_entry_trend` and `adjust_trade_position`; when tripped, returns `DataFrame` with no signals set / returns `None` from adjust; calls `MetricsCollector.send_circuit_breaker_alert()`; does NOT modify `custom_stoploss` output' to [x]",
+            "dependencies": [
+              "T024",
+              "T017"
+            ]
+          },
+          {
+            "task_id": "T040",
+            "agent_role": "Developer",
+            "instruction": "T040 [US7] Add `pair_selection` block to `config/algo_config_schema.py`: `enabled: bool`, `evaluation_interval_candles: int`, `criteria` per module (min_daily_volume, max_adx, min_bb_width); validate in `validate_algo_config`",
+            "file_locks": [
+              "config/algo_config_schema.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T040 [US7] Add `pair_selection` block to `config/algo_config_schema.py`: `enabled: bool`, `evaluation_interval_candles: int`, `criteria` per module (min_daily_volume, max_adx, min_bb_width); validate in `validate_algo_config`' to [x]",
+            "dependencies": [
+              "T012",
+              "T037"
+            ]
+          },
+          {
+            "task_id": "T043",
+            "agent_role": "Developer",
+            "instruction": "T043 [US8] Update `orchestrator/module_registry.py` to use `ModuleResolver`: on `discover_and_register(modules_path, active_module_ids, context)` call `resolver.discover_modules(modules_path)`, filter to `active_module_ids`, instantiate and register each; reject modules whose `RunMode` capability is `UNSUPPORTED` for current run mode",
+            "file_locks": [
+              "orchestrator/module_registry.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T043 [US8] Update `orchestrator/module_registry.py` to use `ModuleResolver`: on `discover_and_register(modules_path, active_module_ids, context)` call `resolver.discover_modules(modules_path)`, filter to `active_module_ids`, instantiate and register each; reject modules whose `RunMode` capability is `UNSUPPORTED` for current run mode' to [x]",
+            "dependencies": [
+              "T039",
+              "T016"
+            ]
+          },
+          {
+            "task_id": "T045",
+            "agent_role": "Developer",
+            "instruction": "T045 [US8] Plugin smoke test in `tests/test_orchestrator.py`: write a minimal stub file to a temp directory, point config at it, run `discover_and_register` \u2192 assert stub appears in registry; test 3-failure suspension fires alert and removes module from routing; test two conflicting signals resolved by arbiter with logged rationale",
+            "file_locks": [
+              "tests/test_orchestrator.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T045 [US8] Plugin smoke test in `tests/test_orchestrator.py`: write a minimal stub file to a temp directory, point config at it, run `discover_and_register` \u2192 assert stub appears in registry; test 3-failure suspension fires alert and removes module from routing; test two conflicting signals resolved by arbiter with logged rationale' to [x]",
+            "dependencies": [
+              "T041",
+              "T031"
+            ]
+          }
+        ],
+        "checkpoint_after": {
+          "enabled": true,
+          "verification_criteria": "Verify all Wave 3 tasks are marked [x] in tasks.md",
+          "git_agent": "git-version-manager",
+          "memory_bank_agent": "memory-bank-keeper"
+        }
+      },
+      {
+        "wave_id": 4,
+        "strategy": "SEQUENTIAL_MERGE",
+        "rationale": "Wave 4: 1 independent task(s) with no file conflicts",
+        "tasks": [
+          {
+            "task_id": "T030",
+            "agent_role": "Developer",
+            "instruction": "T030 [US4] Wire `BudgetAllocator` into `orchestrator/orchestrator_strategy.py` `confirm_trade_entry`: call `budget_allocator.can_open_trade(module_id, proposed_stake, wallets.get_total_stake_amount())` before approving; call `record_open` on fill, `record_close` on trade close via `order_filled` hook",
+            "file_locks": [
+              "orchestrator/orchestrator_strategy.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T030 [US4] Wire `BudgetAllocator` into `orchestrator/orchestrator_strategy.py` `confirm_trade_entry`: call `budget_allocator.can_open_trade(module_id, proposed_stake, wallets.get_total_stake_amount())` before approving; call `record_open` on fill, `record_close` on trade close via `order_filled` hook' to [x]",
+            "dependencies": [
+              "T024",
+              "T027",
+              "T017"
+            ]
+          }
+        ],
+        "checkpoint_after": {
+          "enabled": true,
+          "verification_criteria": "Verify all Wave 4 tasks are marked [x] in tasks.md",
+          "git_agent": "git-version-manager",
+          "memory_bank_agent": "memory-bank-keeper"
+        }
+      },
+      {
+        "wave_id": 5,
+        "strategy": "SEQUENTIAL_MERGE",
+        "rationale": "Wave 5: 1 independent task(s) with no file conflicts",
+        "tasks": [
+          {
+            "task_id": "T033",
+            "agent_role": "Developer",
+            "instruction": "T033 [US5] Wire `RuleBasedReasoningEngine` into `orchestrator/orchestrator_strategy.py`: call `reasoning_engine.get_routing_decision(pair, df)` in `populate_indicators`; update `ModuleContext.reasoning_hints`; pass `RoutingDecision` to `SignalArbiter.arbitrate()`; call `reasoning_engine.tick()` each candle; emit `MetricsCollector.send_routing_change()` on authority change",
+            "file_locks": [
+              "orchestrator/orchestrator_strategy.py",
+              "reasoning_engine.tick"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T033 [US5] Wire `RuleBasedReasoningEngine` into `orchestrator/orchestrator_strategy.py`: call `reasoning_engine.get_routing_decision(pair, df)` in `populate_indicators`; update `ModuleContext.reasoning_hints`; pass `RoutingDecision` to `SignalArbiter.arbitrate()`; call `reasoning_engine.tick()` each candle; emit `MetricsCollector.send_routing_change()` on authority change' to [x]",
+            "dependencies": [
+              "T024",
+              "T030",
+              "T027",
+              "T017"
+            ]
+          }
+        ],
+        "checkpoint_after": {
+          "enabled": true,
+          "verification_criteria": "Verify all Wave 5 tasks are marked [x] in tasks.md",
+          "git_agent": "git-version-manager",
+          "memory_bank_agent": "memory-bank-keeper"
+        }
+      },
+      {
+        "wave_id": 6,
+        "strategy": "SEQUENTIAL_MERGE",
+        "rationale": "Wave 6: 1 independent task(s) with no file conflicts",
+        "tasks": [
+          {
+            "task_id": "T044",
+            "agent_role": "Developer",
+            "instruction": "T044 [US8] Implement `orchestrator/orchestrator_strategy.py` auto-suspension: `_record_module_failure(module_id, pair)` increments failure counter; after 3 consecutive failures \u2192 `AlgoLifecycleSM.transition(SUSPENDED)`, call `MetricsCollector.send_suspension_alert()`, stop routing to that module; `reset_module_failure_count(module_id)` on successful call",
+            "file_locks": [
+              "orchestrator/orchestrator_strategy.py"
+            ],
+            "constitution_rules": [],
+            "completion_handshake": "Upon success, update tasks.md line containing 'T044 [US8] Implement `orchestrator/orchestrator_strategy.py` auto-suspension: `_record_module_failure(module_id, pair)` increments failure counter; after 3 consecutive failures \u2192 `AlgoLifecycleSM.transition(SUSPENDED)`, call `MetricsCollector.send_suspension_alert()`, stop routing to that module; `reset_module_failure_count(module_id)` on successful call' to [x]",
+            "dependencies": [
+              "T024",
+              "T017",
+              "T033",
+              "T027",
+              "T030"
+            ]
+          }
+        ],
+        "checkpoint_after": {
+          "enabled": true,
+          "verification_criteria": "Verify all Wave 6 tasks are marked [x] in tasks.md",
+          "git_agent": "git-version-manager",
+          "memory_bank_agent": "memory-bank-keeper"
+        }
+      }
+    ]
+  }
+}

@@ -1,5 +1,15 @@
 {
-  "events": [],
+  "events": [
+    {
+      "timestamp": "2026-03-16T10:34:50.855841",
+      "agent": "git-manager",
+      "event_type": "checkpoint_created"
+    },
+    {
+      "timestamp": "2026-03-17T09:04:04.444357",
+      "event_type": "context_compression_detected"
+    }
+  ],
   "metadata": {
     "created_at": "2026-03-16T10:34:40-04:00",
     "version": "2.0.0"

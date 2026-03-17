@@ -1,0 +1,11 @@
+{
+  "pythonVersion": "3.11",
+  "extraPaths": [
+    "user_data/strategies"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+  "reportUnusedImport": "warning",
+  "reportUnusedParameter": "none",
+  "reportUnusedVariable": "none"
+}
