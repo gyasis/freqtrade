@@ -17,6 +17,16 @@
     {
       "timestamp": "2026-03-20T14:09:21.914503",
       "event_type": "context_compression_detected"
+    },
+    {
+      "timestamp": "2026-03-20T14:09:22.355206",
+      "agent": "git-manager",
+      "event_type": "checkpoint_created"
+    },
+    {
+      "timestamp": "2026-03-20T14:39:28.202919",
+      "agent": "git-manager",
+      "event_type": "checkpoint_created"
     }
   ],
   "metadata": {

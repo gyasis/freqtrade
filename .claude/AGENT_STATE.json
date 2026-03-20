@@ -1,8 +1,8 @@
 {
-  "session_id": "a430a410-30d3-4afd-8aba-159a425171ec",
+  "session_id": "e01bdb2d-58b4-4f54-a693-0266485fc091",
   "user_id": "gyasis",
   "project_path": "/home/gyasis/Documents/code/freqtrade",
-  "status": "active",
+  "status": "finalized",
   "agents": {
     "main": {
       "status": "idle"
@@ -15,5 +15,6 @@
     }
   },
   "initialized_at": "2026-03-16T10:34:40-04:00",
-  "last_session_start": "2026-03-17T09:05:29.101136"
+  "last_session_start": "2026-03-20T14:11:37.633648",
+  "last_session_end": "2026-03-20T19:35:08.575620"
 }
