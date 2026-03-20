@@ -8,6 +8,15 @@
     {
       "timestamp": "2026-03-17T09:04:04.444357",
       "event_type": "context_compression_detected"
+    },
+    {
+      "timestamp": "2026-03-17T09:04:05.029542",
+      "agent": "git-manager",
+      "event_type": "checkpoint_created"
+    },
+    {
+      "timestamp": "2026-03-20T14:09:21.914503",
+      "event_type": "context_compression_detected"
     }
   ],
   "metadata": {
