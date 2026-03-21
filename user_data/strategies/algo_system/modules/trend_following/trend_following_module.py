@@ -95,7 +95,7 @@ logger = logging.getLogger("algo_system.trend_following_module")
 
 def _ema_pandas(series: Series, period: int) -> Series:
     """Exponential moving average using pandas ewm (talib-equivalent)."""
-    return series.ewm(span=period, adjust=False).mean()
+    return series.ewm(span=period, adjust=False).mean()  # type: ignore[return-value]
 
 
 def _rsi_pandas(series: Series, period: int) -> Series:
@@ -105,13 +105,13 @@ def _rsi_pandas(series: Series, period: int) -> Series:
     Uses EMA with ``alpha = 1 / period`` (equivalent to talib's RSI).
     Returns a Series of the same length; first ``period`` values are NaN.
     """
-    delta = series.diff()
-    gain = delta.clip(lower=0.0)
-    loss = -delta.clip(upper=0.0)
+    delta: Series = series.diff()  # type: ignore[assignment]
+    gain: Series = delta.clip(lower=0.0)  # type: ignore[assignment]
+    loss: Series = -delta.clip(upper=0.0)  # type: ignore[operator]
 
     alpha = 1.0 / period
-    avg_gain = gain.ewm(alpha=alpha, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=alpha, adjust=False).mean()
+    avg_gain: Series = gain.ewm(alpha=alpha, adjust=False).mean()  # type: ignore[assignment]
+    avg_loss: Series = loss.ewm(alpha=alpha, adjust=False).mean()  # type: ignore[assignment]
 
     rs = avg_gain / avg_loss.replace(0.0, np.nan)
     return 100.0 - (100.0 / (1.0 + rs))
@@ -357,9 +357,9 @@ class TrendFollowingModule(IAlgoModule):
         atr_period = self._config.get("atr_period", 14)
         require_sma200 = self._config.get("require_above_sma200", True)
 
-        close = df["close"]
-        high = df["high"]
-        low = df["low"]
+        close: Series = df["close"]  # type: ignore[assignment]
+        high: Series = df["high"]  # type: ignore[assignment]
+        low: Series = df["low"]  # type: ignore[assignment]
 
         # --- EMA fast ---
         try:
@@ -666,22 +666,23 @@ class TrendFollowingModule(IAlgoModule):
         """
         return None
 
-    def on_order_filled(
+    def on_order_filled(  # noqa: PLR0913
         self,
-        _pair: str,
-        _trade: Any,
-        _order: Any,
-        _current_time: Any,
-        _ctx: ModuleContext,
+        pair: str,
+        trade: Any,
+        order: Any,
+        current_time: Any,
+        ctx: ModuleContext,
     ) -> None:
         """
         No-op hook.  TrendFollowingModule does not maintain fill-price state.
 
         Parameters
         ----------
-        _pair, _trade, _order, _current_time, _ctx:
+        pair, trade, order, current_time, ctx:
             Ignored.
         """
+        _ = (pair, trade, order, current_time, ctx)
 
     # ------------------------------------------------------------------
     # Introspection
