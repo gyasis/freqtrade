@@ -311,35 +311,56 @@ class StockScreenerModule(IAlgoModule):
     def _fetch_indicators(
         self, tickers: List[str], cfg: Dict[str, Any]
     ) -> List[_ScreenerResult]:
-        """Fetch RSI, ATR, MACD from EODHD for each candidate."""
-        import requests
+        """Fetch RSI, ATR, MACD from EODHD SDK for each candidate.
 
-        base = "https://eodhd.com/api/technical"
+        Uses the official ``eodhd`` Python SDK (``APIClient``) instead of raw
+        ``requests`` calls.  The SDK returns a pandas DataFrame; we read the
+        first row of the relevant column.  The ``_RateLimiter`` is still in
+        place because the SDK consumes the same API weight budget.
+        """
+        try:
+            from eodhd import APIClient  # type: ignore[import]
+        except ImportError as exc:
+            log.error(
+                "eodhd SDK not installed — cannot fetch indicators. "
+                "Install it with: pip install eodhd  (%s)",
+                exc,
+            )
+            return []
+
+        api = APIClient(self._api_key)
         results: List[_ScreenerResult] = []
 
         for ticker in tickers:
             r = _ScreenerResult(ticker=ticker, price=0.0)
+            eodhd_ticker = f"{ticker}.US"
             try:
-                def _get(fn: str, extra: Optional[dict] = None) -> list:
-                    self._rate_limiter.wait_if_needed(5)
-                    params: dict = {"function": fn, "api_token": self._api_key, "fmt": "json"}
-                    if extra:
-                        params.update(extra)
-                    resp = requests.get(f"{base}/{ticker}.US", params=params, timeout=10)
-                    return resp.json() if resp.ok else []
+                # RSI(14)
+                self._rate_limiter.wait_if_needed(5)
+                rsi_df = api.get_technical_indicator_data(
+                    ticker=eodhd_ticker, function="rsi", period=14, order="d"
+                )
+                if rsi_df is not None and not rsi_df.empty and "rsi" in rsi_df.columns:
+                    r.rsi = float(rsi_df["rsi"].iloc[0])
 
-                rsi_data = _get("rsi", {"period": 14})
-                if rsi_data:
-                    r.rsi = float(rsi_data[0].get("rsi", 0))
+                # ATR(14)
+                self._rate_limiter.wait_if_needed(5)
+                atr_df = api.get_technical_indicator_data(
+                    ticker=eodhd_ticker, function="atr", period=14, order="d"
+                )
+                if atr_df is not None and not atr_df.empty and "atr" in atr_df.columns:
+                    r.atr = float(atr_df["atr"].iloc[0])
 
-                atr_data = _get("atr", {"period": 14})
-                if atr_data:
-                    r.atr = float(atr_data[0].get("atr", 0))
-
-                macd_data = _get("macd", {"fast_period": 12, "slow_period": 26, "signal_period": 9})
-                if macd_data:
-                    r.macd = float(macd_data[0].get("macd", 0))
-                    r.macd_signal = float(macd_data[0].get("signal", 0))
+                # MACD(12, 26, 9)
+                self._rate_limiter.wait_if_needed(5)
+                macd_df = api.get_technical_indicator_data(
+                    ticker=eodhd_ticker, function="macd", period=26, order="d"
+                )
+                if macd_df is not None and not macd_df.empty:
+                    if "macd" in macd_df.columns:
+                        r.macd = float(macd_df["macd"].iloc[0])
+                    if "signal" in macd_df.columns:
+                        r.macd_signal = float(macd_df["signal"].iloc[0])
 
             except Exception as exc:
                 r.error = str(exc)
