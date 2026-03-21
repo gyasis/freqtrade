@@ -23,6 +23,7 @@ Config keys (under shared_state key "<module_id>:config"):
     rsi_overbought          float  RSI above this scores 0  (default: 65)
     require_macd_cross      bool   penalise bearish MACD  (default: True)
     scanner_request_limit   int    ScannerClient request limit (default 5000)
+    adx_top_n               int    top N results to enrich with ADX (default 50)
 """
 
 from __future__ import annotations
@@ -80,6 +81,7 @@ class _ScreenerResult:
     atr: Optional[float] = None
     macd: Optional[float] = None
     macd_signal: Optional[float] = None
+    adx: Optional[float] = None
     score: float = 0.0
     error: Optional[str] = None
     scanner_data: Optional[Dict[str, Any]] = field(default=None)
@@ -116,6 +118,7 @@ class StockScreenerModule(IAlgoModule):
         self._ranked: List[str] = []
         self._last_run_ts: float = 0.0
         self._cfg: Dict[str, Any] = {}
+        self._scoring_weights: Optional[Dict[str, float]] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -125,6 +128,14 @@ class StockScreenerModule(IAlgoModule):
         """Load API key, symbol list, and restore cached results."""
         raw = context.shared_state.get(self.module_id, "config") or {}
         self._cfg = raw
+
+        # Load Bayesian-optimised scoring weights from SharedState if available
+        weights_entry = context.shared_state.get(self.module_id, "scoring_weights")
+        if weights_entry is not None:
+            self._scoring_weights = dict(weights_entry["data"])
+            log.info("%s: loaded Bayesian scoring weights from SharedState", self.module_id)
+        else:
+            self._scoring_weights = None
 
         env_var = raw.get("eodhd_api_key_env", "EODHD_API_KEY")
         self._api_key = os.environ.get(env_var)
@@ -265,6 +276,10 @@ class StockScreenerModule(IAlgoModule):
 
         # Try ScannerClient first (single call, all indicators)
         results = self._scan_with_scanner(cfg)
+
+        # Enrich top-N scanner results with ADX(14) from APIClient
+        if results:
+            self._fetch_adx_for_top(results, cfg)  # type: ignore[attr-defined]
 
         if not results:
             # Fallback: old price_filter + fetch_indicators path
@@ -432,18 +447,56 @@ class StockScreenerModule(IAlgoModule):
             results.append(r)
         return results
 
+    def _fetch_adx_for_top(self, results: List[_ScreenerResult], cfg: Dict[str, Any]) -> None:
+        """Enrich top-N scanner results with ADX(14) from APIClient (in-place).
+
+        Only the first ``adx_top_n`` results are enriched to stay within the
+        EODHD API weight budget.  Failures are silently logged at DEBUG level
+        so a single unavailable ticker does not abort the whole scan.
+        """
+        top_n = cfg.get("adx_top_n", 50)
+        try:
+            from eodhd import APIClient  # noqa: PLC0415
+            api = APIClient(self._api_key)
+        except ImportError:
+            return
+        for r in results[:top_n]:
+            try:
+                self._rate_limiter.wait_if_needed(5)
+                adx_df = api.get_technical_indicator_data(
+                    ticker=f"{r.ticker}.US",
+                    function="adx",
+                    period=14,
+                    order="d",
+                )
+                if adx_df is not None and not adx_df.empty and "adx" in adx_df.columns:
+                    r.adx = float(adx_df["adx"].iloc[0])
+            except Exception as exc:
+                log.debug("ADX fetch error for %s: %s", r.ticker, exc)
+
+    def _w(self, key: str, default: float) -> float:
+        """Get scoring weight from Bayesian-optimised weights or use hard-coded default."""
+        if self._scoring_weights:
+            return float(self._scoring_weights.get(key, default))
+        return default
+
     def _score_and_rank(
         self, results: List[_ScreenerResult], cfg: Dict[str, Any]
     ) -> List[str]:
         """Score each ticker and return symbols sorted descending by score.
 
-        Scanner path (scanner_data present) — up to 6 points:
-          +2.0  bull_market == True
-          +1.0  next_action == "buy"
-          +0.5  price > sma50  (short-term uptrend)
-          +0.5  price > sma200 (long-term uptrend)
-          +1.0  atr14_pcnt > 1.0  (sufficient volatility)
-          +1.0  ema12 > ema26   (EMA crossover bullish)
+        Scanner path (scanner_data present) — up to 8 points:
+          +2.0  bull_market == True         (w_bull_market)
+          +1.0  next_action == "buy"        (w_next_action)
+          +0.5  price > sma50              (w_above_sma50)
+          +0.5  price > sma200             (w_above_sma200)
+          +1.0  atr14_pcnt > 1.0           (w_atr_volatile)
+          +1.0  ema12 > ema26              (w_ema_cross)
+          +1.5  adx > 25                   (w_adx_strong — strong trend confirmed)
+          +0.5  adx > 40 (additional)      (w_adx_very_strong — very strong trend)
+
+        Weights are overridden by Bayesian-optimised values when
+        ``self._scoring_weights`` is set (injected from ScreenerWeightsOptimizer).
 
         Legacy path (scanner_data is None) — up to 3 points:
           +1.0  RSI < rsi_oversold
@@ -467,22 +520,28 @@ class StockScreenerModule(IAlgoModule):
                 # --- Scanner path (richer indicators) ---
                 sd = r.scanner_data
                 if sd.get("bull_market"):
-                    s += 2.0
+                    s += self._w("w_bull_market", 2.0)
                 if sd.get("next_action") == "buy":
-                    s += 1.0
+                    s += self._w("w_next_action", 1.0)
                 sma50 = sd.get("sma50", 0.0)
                 if sma50 and r.price > sma50:
-                    s += 0.5
+                    s += self._w("w_above_sma50", 0.5)
                 sma200 = sd.get("sma200", 0.0)
                 if sma200 and r.price > sma200:
-                    s += 0.5
+                    s += self._w("w_above_sma200", 0.5)
                 atr14_pcnt = sd.get("atr14_pcnt", 0.0)
                 if atr14_pcnt and atr14_pcnt > 1.0:
-                    s += 1.0
+                    s += self._w("w_atr_volatile", 1.0)
                 ema12 = sd.get("ema12", 0.0)
                 ema26 = sd.get("ema26", 0.0)
                 if ema12 and ema26 and ema12 > ema26:
-                    s += 1.0
+                    s += self._w("w_ema_cross", 1.0)
+                # ADX scoring — uses enriched field from _fetch_adx_for_top
+                if r.adx is not None:
+                    if r.adx > 25:
+                        s += self._w("w_adx_strong", 1.5)
+                    if r.adx > 40:
+                        s += self._w("w_adx_very_strong", 0.5)
             else:
                 # --- Legacy path (RSI / MACD / ATR) ---
                 if r.rsi is not None:
