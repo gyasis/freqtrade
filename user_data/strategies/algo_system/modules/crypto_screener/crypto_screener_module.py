@@ -20,6 +20,7 @@ Config keys (under shared_state key "crypto_screener:config"):
     vs_currency         str    CoinGecko vs_currency (default "usd")
     exclude_stablecoins list   symbols to exclude (default ["USDT","USDC","BUSD","DAI","TUSD"])
     pro_api_key_env     str    env var for CoinGecko Pro key (default "" = free tier)
+    use_trending_boost  bool   apply CoinGecko trending +2 bonus (default True)
 """
 
 from __future__ import annotations
@@ -272,20 +273,44 @@ class CryptoScreenerModule(IAlgoModule):
             log.error("%s: CoinGecko fetch failed: %s", self.module_id, exc)
             return
 
-        self._ranked = self._filter_and_rank(coins, cfg)
+        # Fetch anticipatory signals once before scoring
+        trending = self._fetch_trending_symbols()  # type: ignore[attr-defined]
+        # hot_cats = self._fetch_hot_categories()  # logged but not used in scoring yet
+
+        self._ranked = self._filter_and_rank(  # type: ignore[call-arg]
+            coins, cfg, trending_symbols=trending
+        )
         self._last_run_ts = time.time()
         self._save_cache()
         log.info("Scan done. Top 10: %s", self._ranked[:10])
 
     def _filter_and_rank(
-        self, coins: List[Dict[str, Any]], cfg: Dict[str, Any]
+        self,
+        coins: List[Dict[str, Any]],
+        cfg: Dict[str, Any],
+        trending_symbols: Optional[set] = None,
     ) -> List[str]:
-        """Apply filters, compute momentum score, return ranked symbol list."""
+        """Apply filters, compute momentum score, return ranked symbol list.
+
+        Scoring (up to 7 points with trending boost enabled):
+          Base scoring (0–4 points):
+            +1.0  price_change_24h > 2%
+            +1.0  price_change_24h > 5%  (additional strong-momentum point)
+            +1.0  price_change_7d > 5%
+            +1.0  volume/market_cap > 0.05
+
+          Extended scoring (additional points):
+            +1.0  volume/market_cap > 0.10  (very high relative volume)
+            +1.0  price_change_24h > 10%    (very strong surge)
+            +2.0  symbol in trending_symbols (anticipatory — search leads price)
+        """
         min_mcap = cfg.get("min_market_cap", 100_000_000.0)
         min_vol = cfg.get("min_volume_24h", 10_000_000.0)
         min_price = cfg.get("min_price_usd", 0.01)
         max_price = cfg.get("max_price_usd", 100_000.0)
         exclude = {s.upper() for s in cfg.get("exclude_stablecoins", _DEFAULT_STABLECOINS)}
+        use_trending = cfg.get("use_trending_boost", True)
+        _trending = trending_symbols if trending_symbols is not None else set()
 
         scored: List[tuple[str, float]] = []
 
@@ -308,12 +333,13 @@ class CryptoScreenerModule(IAlgoModule):
             if volume < min_vol:
                 continue
 
-            # --- momentum scoring (0–4 points) ---
+            # --- base momentum scoring (0–4 points) ---
             score = 0.0
             change_24h = coin.get("price_change_percentage_24h") or 0.0
             change_7d = (
                 coin.get("price_change_percentage_7d_in_currency") or 0.0
             )
+            vol_to_mcap = (volume / mcap) if mcap > 0 else 0.0
 
             if change_24h > 2.0:
                 score += 1.0
@@ -321,13 +347,66 @@ class CryptoScreenerModule(IAlgoModule):
                 score += 1.0  # additional point for strong momentum
             if change_7d > 5.0:
                 score += 1.0
-            if mcap > 0 and (volume / mcap) > 0.05:
+            if vol_to_mcap > 0.05:
                 score += 1.0
+
+            # --- extended scoring (additional points) ---
+            if vol_to_mcap > 0.10:
+                score += 1.0  # very high relative volume
+            if change_24h > 10.0:
+                score += 1.0  # very strong surge
+
+            # --- anticipatory trending boost ---
+            if use_trending and symbol in _trending:
+                score += 2.0
 
             scored.append((symbol, score))
 
         scored.sort(key=lambda x: x[1], reverse=True)
         return [sym for sym, _ in scored]
+
+    # ------------------------------------------------------------------
+    # Anticipatory signal helpers
+    # ------------------------------------------------------------------
+
+    def _fetch_trending_symbols(self) -> set:
+        """Fetch top-7 trending coins from CoinGecko — leads price by hours."""
+        try:
+            from pycoingecko import CoinGeckoAPI  # noqa: PLC0415
+            cg = CoinGeckoAPI()
+            data = cg.get_search_trending()
+            trending: set = set()
+            for item in data.get("coins", []):
+                sym = item.get("item", {}).get("symbol", "").upper()
+                if sym:
+                    trending.add(sym)
+            log.debug("Trending coins: %s", trending)
+            return trending
+        except Exception as exc:
+            log.debug("Trending fetch failed: %s", exc)
+            return set()
+
+    def _fetch_hot_categories(self) -> set:
+        """Return category names with >5% 24h market cap change.
+
+        CoinGecko free tier doesn't give per-coin category membership easily,
+        so we flag any category with strong momentum as a signal boost
+        and return the category names as metadata (for logging).
+        """
+        try:
+            from pycoingecko import CoinGeckoAPI  # noqa: PLC0415
+            cg = CoinGeckoAPI()
+            cats = cg.get_coins_categories()
+            hot: set = set()
+            for cat in cats:
+                change = cat.get("market_cap_change_24h") or 0
+                if change > 5.0:
+                    hot.add(cat.get("name", "").lower())
+            log.debug("Hot categories: %s", hot)
+            return hot
+        except Exception as exc:
+            log.debug("Category fetch failed: %s", exc)
+            return set()
 
     # ------------------------------------------------------------------
     # Cache helpers

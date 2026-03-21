@@ -12,16 +12,17 @@ This module is a *screener*, not a position manager.  Its job is to:
 Other modules (e.g. GridTradingModule) handle position sizing / grid logic.
 
 Config keys (under shared_state key "<module_id>:config"):
-    eodhd_api_key_env   str    env var name (default: "EODHD_API_KEY")
-    symbols_file        str    path to SEC ticker JSON  (default: "symbols.json")
-    min_price           float  price floor filter  (default: 5.0)
-    max_price           float  price ceiling filter  (default: 500.0)
-    top_n               int    symbols to signal  (default: 10)
-    cache_ttl_hours     float  hours before re-scan  (default: 20.0)
-    max_symbols_scan    int    cap on symbols per run  (default: 500)
-    rsi_oversold        float  RSI below this scores +1  (default: 45)
-    rsi_overbought      float  RSI above this scores 0  (default: 65)
-    require_macd_cross  bool   penalise bearish MACD  (default: True)
+    eodhd_api_key_env       str    env var name (default: "EODHD_API_KEY")
+    symbols_file            str    path to SEC ticker JSON  (default: "symbols.json")
+    min_price               float  price floor filter  (default: 5.0)
+    max_price               float  price ceiling filter  (default: 500.0)
+    top_n                   int    symbols to signal  (default: 10)
+    cache_ttl_hours         float  hours before re-scan  (default: 20.0)
+    max_symbols_scan        int    cap on symbols per run  (default: 500)
+    rsi_oversold            float  RSI below this scores +1  (default: 45)
+    rsi_overbought          float  RSI above this scores 0  (default: 65)
+    require_macd_cross      bool   penalise bearish MACD  (default: True)
+    scanner_request_limit   int    ScannerClient request limit (default 5000)
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
@@ -81,6 +82,7 @@ class _ScreenerResult:
     macd_signal: Optional[float] = None
     score: float = 0.0
     error: Optional[str] = None
+    scanner_data: Optional[Dict[str, Any]] = field(default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -217,13 +219,13 @@ class StockScreenerModule(IAlgoModule):
 
     def on_order_filled(
         self,
-        _pair: str,
-        _trade: Any,
-        _order: Any,
-        _current_time: Any,
-        _ctx: ModuleContext,
+        pair: str,
+        trade: Any,
+        order: Any,
+        current_time: Any,
+        ctx: ModuleContext,
     ) -> None:
-        pass
+        _ = (pair, trade, order, current_time, ctx)
 
     # ------------------------------------------------------------------
     # State introspection
@@ -260,19 +262,80 @@ class StockScreenerModule(IAlgoModule):
 
     def _run_scan(self, cfg: Dict[str, Any]) -> None:
         log.info("%s: starting equity scan…", self.module_id)
+
+        # Try ScannerClient first (single call, all indicators)
+        results = self._scan_with_scanner(cfg)
+
+        if not results:
+            # Fallback: old price_filter + fetch_indicators path
+            min_price = cfg.get("min_price", 5.0)
+            max_price = cfg.get("max_price", 500.0)
+            max_scan = cfg.get("max_symbols_scan", 500)
+            candidates = self._price_filter(self._symbols[:max_scan], min_price, max_price)
+            log.info(
+                "Price filter: %d candidates ($%.0f–$%.0f)",
+                len(candidates), min_price, max_price,
+            )
+            results = self._fetch_indicators(candidates, cfg)
+
+        self._ranked = self._score_and_rank(results, cfg)
+        self._last_run_ts = time.time()
+        self._save_cache()
+        log.info("Scan done. Top 10: %s", self._ranked[:10])
+
+    def _scan_with_scanner(self, cfg: Dict[str, Any]) -> List[_ScreenerResult]:
+        """Fetch all US equity indicators in one ScannerClient call.
+
+        Falls back gracefully to an empty list if ``eodhd.ScannerClient`` is
+        unavailable, which causes ``_run_scan`` to fall back to the legacy
+        APIClient path.
+        """
+        try:
+            from eodhd import ScannerClient  # noqa: PLC0415
+        except ImportError:
+            log.warning("eodhd ScannerClient not available — falling back to APIClient")
+            return []
+
+        try:
+            scanner = ScannerClient(self._api_key)
+            df = scanner.scan_markets(
+                market_type="US",
+                interval="d",
+                quote_currency="USD",
+                request_limit=cfg.get("scanner_request_limit", 5000),
+            )
+        except Exception as exc:
+            log.warning("ScannerClient.scan_markets failed: %s — falling back", exc)
+            return []
+
+        # df columns: symbol, close, volume, sma50, sma200, ema12, ema26,
+        #             bull_market, next_action, atr14, atr14_pcnt
         min_price = cfg.get("min_price", 5.0)
         max_price = cfg.get("max_price", 500.0)
         max_scan = cfg.get("max_symbols_scan", 500)
 
-        candidates = self._price_filter(self._symbols[:max_scan], min_price, max_price)
-        log.info("Price filter: %d candidates ($%.0f–$%.0f)", len(candidates), min_price, max_price)
-
-        results = self._fetch_indicators(candidates, cfg)
-        self._ranked = self._score_and_rank(results, cfg)
-
-        self._last_run_ts = time.time()
-        self._save_cache()
-        log.info("Scan done. Top 10: %s", self._ranked[:10])
+        results: List[_ScreenerResult] = []
+        for _, row in df.head(max_scan).iterrows():
+            try:
+                price = float(row.get("close", 0) or 0)
+                if not (min_price <= price <= max_price):
+                    continue
+                r = _ScreenerResult(ticker=str(row["symbol"]), price=price)
+                r.atr = float(row.get("atr14", 0) or 0)
+                r.scanner_data = {
+                    "sma50": float(row.get("sma50", 0) or 0),
+                    "sma200": float(row.get("sma200", 0) or 0),
+                    "ema12": float(row.get("ema12", 0) or 0),
+                    "ema26": float(row.get("ema26", 0) or 0),
+                    "bull_market": bool(row.get("bull_market", False)),
+                    "next_action": str(row.get("next_action", "")),
+                    "atr14_pcnt": float(row.get("atr14_pcnt", 0) or 0),
+                }
+                results.append(r)
+            except Exception as exc:
+                log.debug("ScannerClient row error: %s", exc)
+        log.info("ScannerClient returned %d candidates after price filter", len(results))
+        return results
 
     def _price_filter(
         self, tickers: List[str], min_p: float, max_p: float
@@ -372,7 +435,24 @@ class StockScreenerModule(IAlgoModule):
     def _score_and_rank(
         self, results: List[_ScreenerResult], cfg: Dict[str, Any]
     ) -> List[str]:
-        """Score 0–3 per ticker and return sorted descending."""
+        """Score each ticker and return symbols sorted descending by score.
+
+        Scanner path (scanner_data present) — up to 6 points:
+          +2.0  bull_market == True
+          +1.0  next_action == "buy"
+          +0.5  price > sma50  (short-term uptrend)
+          +0.5  price > sma200 (long-term uptrend)
+          +1.0  atr14_pcnt > 1.0  (sufficient volatility)
+          +1.0  ema12 > ema26   (EMA crossover bullish)
+
+        Legacy path (scanner_data is None) — up to 3 points:
+          +1.0  RSI < rsi_oversold
+          +0.5  RSI < rsi_overbought
+          +1.0  MACD > MACD signal
+          -0.5  MACD bearish (if require_macd_cross)
+          +1.0  ATR/price > 1%
+          +0.3  ATR/price <= 1%
+        """
         rsi_oversold = cfg.get("rsi_oversold", 45.0)
         rsi_overbought = cfg.get("rsi_overbought", 65.0)
         require_macd = cfg.get("require_macd_cross", True)
@@ -382,21 +462,45 @@ class StockScreenerModule(IAlgoModule):
             if r.error:
                 continue
             s = 0.0
-            if r.rsi is not None:
-                if r.rsi < rsi_oversold:
+
+            if r.scanner_data is not None:
+                # --- Scanner path (richer indicators) ---
+                sd = r.scanner_data
+                if sd.get("bull_market"):
+                    s += 2.0
+                if sd.get("next_action") == "buy":
                     s += 1.0
-                elif r.rsi < rsi_overbought:
+                sma50 = sd.get("sma50", 0.0)
+                if sma50 and r.price > sma50:
                     s += 0.5
-            if r.macd is not None and r.macd_signal is not None:
-                if r.macd > r.macd_signal:
+                sma200 = sd.get("sma200", 0.0)
+                if sma200 and r.price > sma200:
+                    s += 0.5
+                atr14_pcnt = sd.get("atr14_pcnt", 0.0)
+                if atr14_pcnt and atr14_pcnt > 1.0:
                     s += 1.0
-                elif require_macd:
-                    s -= 0.5
-            if r.atr is not None and r.atr > 0 and r.price > 0:
-                if (r.atr / r.price) > 0.01:
+                ema12 = sd.get("ema12", 0.0)
+                ema26 = sd.get("ema26", 0.0)
+                if ema12 and ema26 and ema12 > ema26:
                     s += 1.0
-                else:
-                    s += 0.3
+            else:
+                # --- Legacy path (RSI / MACD / ATR) ---
+                if r.rsi is not None:
+                    if r.rsi < rsi_oversold:
+                        s += 1.0
+                    elif r.rsi < rsi_overbought:
+                        s += 0.5
+                if r.macd is not None and r.macd_signal is not None:
+                    if r.macd > r.macd_signal:
+                        s += 1.0
+                    elif require_macd:
+                        s -= 0.5
+                if r.atr is not None and r.atr > 0 and r.price > 0:
+                    if (r.atr / r.price) > 0.01:
+                        s += 1.0
+                    else:
+                        s += 0.3
+
             scored.append((r.ticker, s))
 
         scored.sort(key=lambda x: x[1], reverse=True)
