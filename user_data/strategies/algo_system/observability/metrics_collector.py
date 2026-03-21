@@ -72,3 +72,22 @@ class MetricsCollector:
     def send_info(self, message: str) -> None:
         """General-purpose informational alert."""
         self._send(f"LATS: {message}")
+
+    def send_alert(self, module_id: str, pair: str, message: str) -> None:
+        """
+        Send a module-level trading signal alert (used by alert-mode modules).
+
+        Parameters
+        ----------
+        module_id:
+            Identifier of the module producing the alert.
+        pair:
+            Trading pair the alert relates to (e.g. ``"BTC/USDT"``).
+        message:
+            Human-readable alert body; may be multi-line.
+        """
+        msg = (
+            f"LATS SIGNAL ALERT [{module_id}] {pair}\n"
+            f"{message}"
+        )
+        self._send(msg)
