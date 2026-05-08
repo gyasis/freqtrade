@@ -50,7 +50,7 @@ _STRAT_ROOT = Path(__file__).resolve().parents[2]  # user_data/strategies/
 if str(_STRAT_ROOT) not in sys.path:
     sys.path.insert(0, str(_STRAT_ROOT))
 
-from algo_system.modules.grid_trading.grid_calculator_v2 import GridConfigV2
+from algo_system.config.grid_config import GridConfig
 from algo_system.orchestrator.optuna_grid_optimizer import (
     OptunaGridOptimizer,
     SQLiteOptunaFallback,
@@ -337,7 +337,7 @@ class TestGetBestConfig:
         assert result is None
 
     def test_get_best_config_returns_gridconfigv2(self, tmp_db: Path) -> None:
-        """A known symbol should return a valid GridConfigV2 instance."""
+        """A known symbol should return a valid GridConfig instance."""
         opt = OptunaGridOptimizer(tmp_db)
         with patch(
             "algo_system.orchestrator.optuna_grid_optimizer._OPTUNA_AVAILABLE", False
@@ -345,7 +345,7 @@ class TestGetBestConfig:
             opt.load()
         cfg = opt.get_best_config("TSLA")
         assert cfg is not None
-        assert isinstance(cfg, GridConfigV2)
+        assert isinstance(cfg, GridConfig)
         # TSLA 2023 has best_value = -0.85 (lower than 2022's -0.70)
         # so the 2023 params should be picked when no year is specified
         assert cfg.period == 14
@@ -397,7 +397,7 @@ class TestGetBestConfig:
             opt.load()
         cfg = opt.get_best_config("TSLA.US")
         assert cfg is not None
-        assert isinstance(cfg, GridConfigV2)
+        assert isinstance(cfg, GridConfig)
 
 
 class TestGetAllSymbols:
@@ -483,9 +483,9 @@ class TestInjectIntoSharedState:
             entry = shared_state.get(module_id, pair_key)
             assert entry is not None, f"Missing entry for {symbol}"
             assert "data" in entry
-            # The data should be a valid GridConfigV2 dict
-            cfg = GridConfigV2.from_dict(entry["data"])
-            assert isinstance(cfg, GridConfigV2)
+            # The data should be a valid GridConfig dict
+            cfg = GridConfig.from_dict(entry["data"])
+            assert isinstance(cfg, GridConfig)
 
     def test_inject_does_not_raise_on_empty_db(
         self, empty_db: Path, shared_state: SharedState
@@ -530,7 +530,7 @@ class TestSqliteFallback:
 
         cfg = opt.get_best_config("TSLA")
         assert cfg is not None
-        assert isinstance(cfg, GridConfigV2)
+        assert isinstance(cfg, GridConfig)
 
     def test_sqlite_fallback_list_study_names(self, tmp_db: Path) -> None:
         fb = SQLiteOptunaFallback(tmp_db)
@@ -644,11 +644,11 @@ class TestStripExchangeSuffix:
         assert _strip_exchange_suffix(raw) == expected
 
 
-class TestGridConfigV2Roundtrip:
-    """Verify that GridConfigV2.from_dict / to_dict roundtrip correctly."""
+class TestGridConfigRoundtrip:
+    """Verify that GridConfig.from_dict / to_dict roundtrip correctly."""
 
     def test_roundtrip(self) -> None:
-        original = GridConfigV2(
+        original = GridConfig(
             grid_distance=0.005,
             grid_range=0.10,
             history_lookback=50,
@@ -663,32 +663,32 @@ class TestGridConfigV2Roundtrip:
             selected_indicators=["ATR", "RSI"],
         )
         as_dict = original.to_dict()
-        restored = GridConfigV2.from_dict(as_dict)
+        restored = GridConfig.from_dict(as_dict)
         assert restored.grid_distance == original.grid_distance
         assert restored.method == original.method
         assert restored.selected_indicators == original.selected_indicators
 
     def test_grid_count_derived(self) -> None:
-        cfg = GridConfigV2(grid_distance=0.01, grid_range=0.10)
+        cfg = GridConfig(grid_distance=0.01, grid_range=0.10)
         assert cfg.grid_count() == 10
 
     def test_bounds_from_midprice(self) -> None:
-        cfg = GridConfigV2(grid_distance=0.005, grid_range=10.0)
+        cfg = GridConfig(grid_distance=0.005, grid_range=10.0)
         mid = 100.0
         assert cfg.upper_bound(mid) == pytest.approx(105.0)
         assert cfg.lower_bound(mid) == pytest.approx(95.0)
 
     def test_invalid_method_raises(self) -> None:
         with pytest.raises(ValueError, match="method"):
-            GridConfigV2(method="zigzag")  # type: ignore[arg-type]
+            GridConfig(method="zigzag")  # type: ignore[arg-type]
 
     def test_invalid_allocation_strategy_raises(self) -> None:
         with pytest.raises(ValueError, match="allocation_strategy"):
-            GridConfigV2(allocation_strategy="random")  # type: ignore[arg-type]
+            GridConfig(allocation_strategy="random")  # type: ignore[arg-type]
 
     def test_invalid_indicator_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown indicator"):
-            GridConfigV2(selected_indicators=["ATR", "MACD_v99"])
+            GridConfig(selected_indicators=["ATR", "MACD_v99"])
 
     def test_from_dict_ignores_unknown_keys(self) -> None:
         d = {
@@ -697,7 +697,7 @@ class TestGridConfigV2Roundtrip:
             "method": "moving_average",
             "unknown_future_param": "ignored",
         }
-        cfg = GridConfigV2.from_dict(d)
+        cfg = GridConfig.from_dict(d)
         assert cfg.grid_distance == pytest.approx(0.005)
 
 

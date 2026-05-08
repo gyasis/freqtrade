@@ -2,7 +2,7 @@
 orchestrator/optuna_grid_optimizer.py
 ======================================
 OptunaGridOptimizer — loads pre-computed Optuna study results from a SQLite
-database and maps them to ``GridConfigV2`` objects that ``GridTradingModule``
+database and maps them to ``GridConfig`` objects that ``GridTradingModule``
 can consume at initialisation time.
 
 This module is a **pure utility** — it has no freqtrade imports and does not
@@ -64,7 +64,7 @@ except ImportError:
     optuna = None  # type: ignore[assignment]
     _OPTUNA_AVAILABLE = False
 
-from ..modules.grid_trading.grid_calculator_v2 import GridConfigV2
+from ..config.grid_config import GridConfig
 
 logger = logging.getLogger("algo_system.optuna_grid_optimizer")
 
@@ -311,7 +311,7 @@ class SQLiteOptunaFallback:
 
 
 class OptunaGridOptimizer:
-    """Load Optuna study results and map them to ``GridConfigV2`` configs.
+    """Load Optuna study results and map them to ``GridConfig`` configs.
 
     The optimizer maintains an internal cache of ``_StudyRecord`` objects
     (populated by :py:meth:`load`) keyed by ``(symbol_upper, year)``.
@@ -408,8 +408,8 @@ class OptunaGridOptimizer:
         self,
         symbol: str,
         year: Optional[int] = None,
-    ) -> Optional[GridConfigV2]:
-        """Return the ``GridConfigV2`` for *symbol* tuned by Optuna.
+    ) -> Optional[GridConfig]:
+        """Return the ``GridConfig`` for *symbol* tuned by Optuna.
 
         Parameters
         ----------
@@ -424,8 +424,8 @@ class OptunaGridOptimizer:
 
         Returns
         -------
-        GridConfigV2 or None
-            A fully validated ``GridConfigV2`` built from the best trial's
+        GridConfig or None
+            A fully validated ``GridConfig`` built from the best trial's
             params, or ``None`` if no data exists for *symbol*.
         """
         if not self._loaded:
@@ -525,8 +525,8 @@ class OptunaGridOptimizer:
     ) -> None:
         """Write each symbol's best config into *shared_state*.
 
-        Each symbol's best ``GridConfigV2`` (across all years, by objective
-        value) is serialised via ``GridConfigV2.to_dict()`` and written to
+        Each symbol's best ``GridConfig`` (across all years, by objective
+        value) is serialised via ``GridConfig.to_dict()`` and written to
         ``shared_state`` under key ``(module_id, "optuna:{symbol}")``.
 
         ``GridTradingModule.initialize()`` can then retrieve these at startup:
@@ -535,7 +535,7 @@ class OptunaGridOptimizer:
 
             entry = ctx.shared_state.get(self.module_id, f"optuna:{symbol}")
             if entry:
-                cfg = GridConfigV2.from_dict(entry["data"])
+                cfg = GridConfig.from_dict(entry["data"])
 
         Parameters
         ----------
@@ -694,7 +694,7 @@ def _strip_exchange_suffix(symbol: str) -> str:
     return symbol.split(".")[0]
 
 
-# Canonical mapping from Optuna param names → GridConfigV2 field names.
+# Canonical mapping from Optuna param names → GridConfig field names.
 # When an Optuna param name differs from the dataclass field name, add an
 # entry here.  Identity mappings (name == field) need not be listed — they
 # are handled by the ``from_dict`` fallthrough.
@@ -705,8 +705,8 @@ _PARAM_ALIASES: Dict[str, str] = {
 }
 
 
-def _params_to_config(params: Dict[str, Any]) -> Optional[GridConfigV2]:
-    """Convert an Optuna best-params dict to a ``GridConfigV2`` instance.
+def _params_to_config(params: Dict[str, Any]) -> Optional[GridConfig]:
+    """Convert an Optuna best-params dict to a ``GridConfig`` instance.
 
     Parameters
     ----------
@@ -715,8 +715,8 @@ def _params_to_config(params: Dict[str, Any]) -> Optional[GridConfigV2]:
 
     Returns
     -------
-    GridConfigV2 or None
-        ``None`` if ``GridConfigV2.__post_init__`` raises a ``ValueError``
+    GridConfig or None
+        ``None`` if ``GridConfig.__post_init__`` raises a ``ValueError``
         (e.g. the DB contains params from an old study schema that is no
         longer valid).
     """
@@ -732,10 +732,10 @@ def _params_to_config(params: Dict[str, Any]) -> Optional[GridConfigV2]:
     normalised = _coerce_indicators(normalised)
 
     try:
-        return GridConfigV2.from_dict(normalised)
+        return GridConfig.from_dict(normalised)
     except (ValueError, TypeError) as exc:
         logger.warning(
-            "_params_to_config: could not build GridConfigV2 from params %r: %s",
+            "_params_to_config: could not build GridConfig from params %r: %s",
             params,
             exc,
         )
@@ -766,7 +766,7 @@ def _coerce_indicators(params: Dict[str, Any]) -> Dict[str, Any]:
     dict
         Params dict with ``"selected_indicators"`` in canonical list form.
     """
-    from ..modules.grid_trading.grid_calculator_v2 import VALID_INDICATORS  # noqa: PLC0415
+    from ..config.grid_config import VALID_INDICATORS  # noqa: PLC0415
 
     result = dict(params)
 
@@ -780,7 +780,7 @@ def _coerce_indicators(params: Dict[str, Any]) -> Dict[str, Any]:
             result["selected_indicators"] = [
                 str(i) for i in raw if str(i) in VALID_INDICATORS
             ]
-        # else: leave as-is and let GridConfigV2.__post_init__ validate
+        # else: leave as-is and let GridConfig.__post_init__ validate
         return result
 
     # Boolean flag pattern: "use_ATR", "use_RSI", etc.

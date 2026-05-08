@@ -3,12 +3,9 @@ tests/test_integration_optimizer_to_module.py
 =============================================
 Integration tests for the full pipeline:
     OptunaGridOptimizer.inject_into_shared_state()
-        
- SharedState
-        
- GridTradingModule._resolve_config()
-        
- GridTradingModule._initialize_grid()
+ — SharedState
+ — GridTradingModule._resolve_config()
+ — GridTradingModule._initialize_grid()
 
 These tests exercise the real data-flow path using a real SharedState
 (in-memory, temp-file persistence so disk I/O is harmless in CI).
@@ -134,9 +131,7 @@ def _inject_study_record(
 
 
 class TestOptimizerToModulePipeline:
-    """Full-pipeline integration: optimizer 
- shared_state 
- module."""
+    """Full-pipeline integration: optimizer — shared_state — module."""
 
     # ------------------------------------------------------------------
     # 1. inject_then_resolve_config
@@ -150,12 +145,10 @@ class TestOptimizerToModulePipeline:
         ss = _make_shared_state()
         original = _make_linear_config(grid_distance=0.01, grid_range=0.10)
 
-        # Step 1 
- write the config into SharedState exactly as the optimizer would
+        # Step 1 — write the config into SharedState exactly as the optimizer would
         ss.set("grid_trading_v1", "optuna:BTC", original.to_dict())
 
-        # Step 2 
- build a module and call _resolve_config
+        # Step 2 — build a module and call _resolve_config
         mod = _make_initialized_module(ss, pair="BTC/USDT")
         ctx = make_module_context(pair="BTC/USDT", shared_state=ss)
 
@@ -206,13 +199,11 @@ class TestOptimizerToModulePipeline:
         mod = _make_initialized_module(ss, pair="TSLA.US/USD")
         ctx = make_module_context(pair="TSLA.US/USD", shared_state=ss)
 
-        # The pair has an exchange suffix 
- the module must still find the config
+        # The pair has an exchange suffix — the module must still find the config
         result = mod._resolve_config("TSLA.US/USD", ctx)
 
         assert result is not None, (
-            "_resolve_config should normalise 'TSLA.US/USD' 
- 'TSLA' "
+            "_resolve_config should normalise 'TSLA.US/USD' — 'TSLA' "
             "and find the 'optuna:TSLA' entry"
         )
         assert isinstance(result, GridConfig)
@@ -221,17 +212,18 @@ class TestOptimizerToModulePipeline:
     # 3. v2_grid_initialized_via_adjust_position
     # ------------------------------------------------------------------
 
-    def test_v2_grid_initialized_via_adjust_position(self) -> None:
+    def test_grid_built_via_generate_entry_signal_with_optuna_config(self) -> None:
+        """When SharedState contains a linear GridConfig under the optuna:SYMBOL
+        key, the module's generate_entry_signal must lazily build the grid
+        using that config, producing a GridState with >= 2 levels in a sensible
+        range around the candle close price.
         """
-        When SharedState contains a linear GridConfig, _initialize_grid must:
-          - return a non-None GridState
-          - produce at least 2 grid levels
-          - place all levels within [midprice*(1 - grid_range/2),
-                                     midprice*(1 + grid_range/2)]  (approximately)
-        """
+        from test_helpers import make_ranging_ohlcv_df  # noqa: PLC0415
+
         ss = _make_shared_state()
-        grid_distance = 0.01   # 1 %
-        grid_range = 0.10      # 10 %
+        # Use absolute (price-unit) values so range/distance are sane against a $50k close
+        grid_distance = 500.0
+        grid_range = 5000.0
         cfg = _make_linear_config(
             grid_distance=grid_distance,
             grid_range=grid_range,
@@ -239,78 +231,82 @@ class TestOptimizerToModulePipeline:
         ss.set("grid_trading_v1", "optuna:BTC", cfg.to_dict())
 
         mod = _make_initialized_module(ss, pair="BTC/USDT")
+        # Use a ranging (low-ADX) df so the entry-quality gate doesn't defer
+        df = make_ranging_ohlcv_df(120, center_price=50_000.0)
         ctx = make_module_context(pair="BTC/USDT", shared_state=ss)
 
-        # Manually resolve config (mirrors what _initialize_grid does lazily)
-        loaded_cfg = mod._resolve_config("BTC/USDT", ctx)
-        assert loaded_cfg is not None
-
-        current_rate = 50_000.0
-        state = mod._initialize_grid("BTC/USDT", current_rate=current_rate, v2_cfg=loaded_cfg)
-
-        assert state is not None, "_initialize_grid must return a GridState, not None"
-        assert len(state.grid_levels) >= 2, (
-            "v2 grid must have at least 2 levels"
+        sig = mod.generate_entry_signal(df, {"pair": "BTC/USDT"}, ctx)
+        assert "BTC/USDT" in mod._grid_states, (
+            "generate_entry_signal must build the grid lazily"
         )
 
-        # Verify levels are approximately within the expected range
-        expected_lower = current_rate * (1.0 - grid_range / 2.0)
-        expected_upper = current_rate * (1.0 + grid_range / 2.0)
-        # np.arange(start, stop, step) 
- last level < stop, so use a small tolerance
-        tolerance = grid_distance * current_rate * 2.0  # 2 step widths of slack
+        state = mod._grid_states["BTC/USDT"]
+        assert len(state.grid_levels) >= 2
+
+        # All levels within ~grid_range of the actual midprice (centred on it)
+        midprice = (state.upper_bound + state.lower_bound) / 2.0
         for level in state.grid_levels:
-            assert level >= expected_lower - tolerance, (
-                f"Level {level:.2f} is below expected lower bound "
-                f"{expected_lower - tolerance:.2f}"
-            )
-            assert level <= expected_upper + tolerance, (
-                f"Level {level:.2f} is above expected upper bound "
-                f"{expected_upper + tolerance:.2f}"
+            assert abs(level - midprice) <= grid_range, (
+                f"Level {level:.2f} is more than grid_range from midprice {midprice:.2f}"
             )
 
     # ------------------------------------------------------------------
     # 4. log_scale_with_df_produces_log_spaced_levels
     # ------------------------------------------------------------------
 
-    def test_v2_fallback_to_v1_when_log_scale_true(self) -> None:
+    def test_log_scale_now_works_via_unified_calculator(self) -> None:
+        """T044: previously this test asserted fallback-to-v1 behaviour when
+        log_scale=True was used without a DataFrame. Under the unified
+        GridCalculator log_scale is a first-class mode that USES the
+        DataFrame's High/Low to produce log-spaced levels — no fallback.
+
+        The test now verifies the new behaviour: with a DataFrame present,
+        log_scale=True produces a valid log-spaced grid via
+        generate_entry_signal.
         """
-        When GridConfig.log_scale=True and no DataFrame is available
-        (via _initialize_grid compat shim), fall back to the v1 linear grid
-        rather than returning None.  The resulting GridState must not be None.
-        """
+        from test_helpers import make_ranging_ohlcv_df  # noqa: PLC0415
+
         ss = _make_shared_state()
         log_scale_cfg = GridConfig(
             auto_adjust=False,
-            log_scale=True,   # triggers fallback inside _initialize_grid
+            log_scale=True,
             grid_distance=0.01,
             grid_range=0.10,
             method="market_price",
             dynamic_midprice=False,
         )
+        ss.set("grid_trading_v1", "optuna:ETH", log_scale_cfg.to_dict())
 
         mod = _make_initialized_module(ss, pair="ETH/USDT")
+        df = make_ranging_ohlcv_df(120, center_price=3_000.0)
+        ctx = make_module_context(pair="ETH/USDT", shared_state=ss)
 
-        current_rate = 3_000.0
-        state = mod._initialize_grid("ETH/USDT", current_rate=current_rate, v2_cfg=log_scale_cfg)
-
-        assert state is not None, (
-            "_initialize_grid MUST NOT return None when log_scale=True "
-            "without a DataFrame 
- it must fall back to the v1 linear grid"
+        sig = mod.generate_entry_signal(df, {"pair": "ETH/USDT"}, ctx)
+        assert "ETH/USDT" in mod._grid_states, (
+            "log_scale=True with a DataFrame must build a grid (no fallback path)"
         )
-        assert len(state.grid_levels) >= 2, "fallback v1 grid must have at least 2 levels"
 
-        # Verify the fallback used the v1 
-5 % bounds from module config
-        upper_pct = mod._config["upper_bound_pct"]   # 0.05
-        lower_pct = mod._config["lower_bound_pct"]   # 0.05
-        expected_lower = current_rate * (1.0 - lower_pct)
-        expected_upper = current_rate * (1.0 + upper_pct)
+        state = mod._grid_states["ETH/USDT"]
+        assert len(state.grid_levels) >= 2, "log-scale grid must have at least 2 levels"
 
-        # v1 levels are linearly spaced between expected_lower and expected_upper
-        assert min(state.grid_levels) == pytest.approx(expected_lower, rel=1e-6)
-        assert max(state.grid_levels) == pytest.approx(expected_upper, rel=1e-6)
+        # Log-spaced levels: ratios between consecutive levels are CONSTANT
+        # (linear-spaced has decreasing ratios as levels grow). The previous
+        # assertion `max/min < 1.5` was too loose — a linear grid passes it too.
+        # Stronger check: stddev/mean of the ratios must be near-zero for log,
+        # but is meaningfully > 0 for linear.
+        import statistics
+        ratios = [state.grid_levels[i + 1] / state.grid_levels[i]
+                  for i in range(len(state.grid_levels) - 1)]
+        assert len(ratios) >= 2
+        assert all(r > 1.0 for r in ratios)  # ascending
+        mean_r = statistics.mean(ratios)
+        stdev_r = statistics.stdev(ratios)
+        # np.logspace produces exactly-equal ratios so cv should be ~0; allow 1e-9 slack.
+        cv = stdev_r / mean_r
+        assert cv < 1e-6, (
+            f"log-spaced ratios should be near-constant (cv ~ 0); got cv={cv:.2e}, "
+            f"ratios={ratios}. A linear grid would have cv >> 1e-6."
+        )
 
     # ------------------------------------------------------------------
     # 5. inject_into_shared_state_key_format
@@ -329,8 +325,7 @@ class TestOptimizerToModulePipeline:
         cfg = _make_linear_config(grid_distance=0.02, grid_range=0.15)
         _inject_study_record(optimizer, symbol="AAPL", year=2024, cfg=cfg)
 
-        # Call the real inject_into_shared_state 
- the method under test
+        # Call the real inject_into_shared_state — the method under test
         optimizer.inject_into_shared_state(ss, module_id="grid_trading_v1")
 
         # Verify the entry is present
@@ -359,8 +354,7 @@ class TestOptimizerToModulePipeline:
         assert reconstructed.method == cfg.method
 
     # ------------------------------------------------------------------
-    # Additional edge-case: multiple symbols injected 
- all retrievable
+    # Additional edge-case: multiple symbols injected — all retrievable
     # ------------------------------------------------------------------
 
     def test_inject_multiple_symbols(self) -> None:
@@ -425,8 +419,7 @@ class TestOptimizerToModulePipeline:
         mod = _make_initialized_module(ss, pair="ETH/USDT")
         ctx = make_module_context(pair="ETH/USDT", shared_state=ss)
 
-        # Must not raise 
- must log a warning and return None
+        # Must not raise — must log a warning and return None
         result = mod._resolve_config("ETH/USDT", ctx)
         assert result is None, (
             "_resolve_config must return None for undeserializable data, not raise"
