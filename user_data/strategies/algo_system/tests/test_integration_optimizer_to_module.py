@@ -50,7 +50,7 @@ def _make_shared_state() -> SharedState:
     """Fresh in-memory SharedState backed by a temp file (avoids disk clutter)."""
     return SharedState(
         persistence_path=os.path.join(
-            tempfile.gettempdir(), "lats_test_integration_opt_to_mod.json"
+            tempfile.gettempdir(), f"lats_test_integration_opt_to_mod_{os.getpid()}.json"
         )
     )
 

@@ -166,7 +166,7 @@ def make_module_context(
 
     if shared_state is None:
         shared_state = SharedState(
-            persistence_path=os.path.join(tempfile.gettempdir(), "lats_test_state.json")
+            persistence_path=os.path.join(tempfile.gettempdir(), f"lats_test_state_{os.getpid()}.json")
         )
 
     try:

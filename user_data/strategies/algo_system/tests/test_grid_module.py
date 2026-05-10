@@ -354,7 +354,7 @@ def _make_initialized_module(
     from algo_system.orchestrator.shared_state import SharedState
     import os, tempfile
     ss = SharedState(
-        persistence_path=os.path.join(tempfile.gettempdir(), "lats_test_grid_module.json")
+        persistence_path=os.path.join(tempfile.gettempdir(), f"lats_test_grid_module_{os.getpid()}.json")
     )
     ss.set("grid_trading_v1", "config", {
         "upper_bound_pct": 0.05,

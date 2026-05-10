@@ -53,7 +53,7 @@ def module_context() -> ModuleContext:
 def shared_state() -> SharedState:
     """Fresh SharedState using a temp file (no real disk I/O during tests)."""
     return SharedState(
-        persistence_path=os.path.join(tempfile.gettempdir(), "lats_test_shared_state.json")
+        persistence_path=os.path.join(tempfile.gettempdir(), f"lats_test_shared_state_{os.getpid()}.json")
     )
 
 
