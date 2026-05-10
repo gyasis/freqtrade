@@ -3,25 +3,24 @@ modules/grid_trading/grid_trading_module.py
 ===========================================
 GridTradingModule — the first concrete IAlgoModule in the LATS system.
 
-Implements a symmetric grid trading strategy entirely via ``adjust_position()``.
-The initial position is opened by ``generate_entry_signal()`` only when no grid
-is active for the pair and market conditions are range-bound (low ADX).  After
-that, all subsequent buys and partial sells are driven by ``adjust_position()``,
-which fires each time the current price crosses a grid level.
+Implements a symmetric grid trading strategy. The initial position is opened by
+``generate_entry_signal()``, which also lazily *builds the grid* using the
+current candle window so that the unified ``GridCalculator`` (and its midprice /
+auto-tune machinery) has the data it needs. After the entry, all subsequent
+buys and partial sells are driven by ``adjust_position()`` whenever the price
+crosses a grid level.
 
 Architecture
 ------------
-- ``GridCalculator`` (stateless) handles all pure-math operations.
-- ``GridState`` (per-pair dataclass) owns mutable grid bookkeeping.
+- ``GridConfig`` (``algo_system.config.grid_config``) is the single source of
+  truth for tunable parameters — set per-pair by the optimizer, or derived
+  on-the-fly from the module's bootstrap config when no optimizer config exists.
+- ``GridCalculator`` (stateless, ``@staticmethod`` everywhere) handles all
+  pure-math operations.
+- ``GridState`` (per-pair dataclass) owns mutable bookkeeping including
+  ``last_price`` (the previous-candle price used for crossing detection).
 - This module owns the lifecycle of all ``GridState`` instances and persists
   them to ``SharedState`` on shutdown / restores them on ``on_bot_start``.
-
-Grid trading primer
--------------------
-A grid divides a price range [lower, upper] into ``N`` equally-spaced levels.
-When the price crosses a level downward, a fixed stake is added (buy).
-When the price crosses a previously-bought level upward, a partial sell is
-executed to lock in the profit band between adjacent levels.
 
 Notes for live trading
 ----------------------
@@ -40,24 +39,23 @@ from pandas import DataFrame
 
 from ...base.ialgo_module import IAlgoModule, ModuleCapability, ModuleSignal
 from ...base.module_context import ModuleContext
+from ...config.grid_config import GridConfig
 from ...reasoning.entry_quality_evaluator import EntryQualityEvaluator
 from ..grid_trading.grid_calculator import GridCalculator
 from ..grid_trading.grid_state import GridState
 
 if TYPE_CHECKING:
-    pass  # no additional TYPE_CHECKING imports needed
+    pass
 
 
 logger = logging.getLogger("algo_system.grid_trading_module")
 
 
 class GridTradingModule(IAlgoModule):
-    """
-    Grid trading module for the LATS algorithm orchestration system.
+    """Grid trading module for the LATS algorithm orchestration system.
 
-    The module opens an initial position via ``generate_entry_signal()`` then
-    manages all subsequent position adjustments (buys at lower grid levels,
-    partial sells at upper levels) through ``adjust_position()``.
+    Subsequent position adjustments (buys at lower grid levels, partial sells
+    at upper levels) are managed through ``adjust_position()``.
 
     Class attributes
     ----------------
@@ -65,28 +63,18 @@ class GridTradingModule(IAlgoModule):
         Unique identifier used as a key in SharedState, log prefixes, and
         entry/exit tag prefixes.
     version : str
-        Semantic version.  Increment on breaking state-format changes so that
-        restored ``GridState`` dicts from an older version can be migrated or
-        discarded gracefully.
-
-    Capability flags
-    ----------------
-    supports_live is ``PARTIAL`` because freqtrade requires
-    ``position_adjustment_enable = True`` in the strategy and the exchange must
-    support fractional trades.
+        Semantic version. Increment on breaking state-format changes.
     """
 
     # ------------------------------------------------------------------
     # Class-level identity
     # ------------------------------------------------------------------
-
     module_id = "grid_trading_v1"
-    version = "1.0.0"
+    version = "1.1.0"  # bumped: GridState.last_price + GridConfig integration
 
     # ------------------------------------------------------------------
     # Capability flags
     # ------------------------------------------------------------------
-
     supports_backtest = ModuleCapability.SUPPORTED
     supports_paper = ModuleCapability.SUPPORTED
     supports_live = ModuleCapability.PARTIAL       # position_adjustment_enable required
@@ -97,36 +85,26 @@ class GridTradingModule(IAlgoModule):
     # ------------------------------------------------------------------
     # Constructor
     # ------------------------------------------------------------------
-
     def __init__(self) -> None:
-        self._calculator = GridCalculator()
-        self._grid_states: Dict[str, GridState] = {}   # pair -> GridState
-        self._config: Dict[str, Any] = {}
-        self._defer_counts: Dict[str, int] = {}        # pair -> consecutive defer count
-        self._last_prices: Dict[str, float] = {}       # pair -> last seen price (prev_rate proxy)
+        self._grid_states: Dict[str, GridState] = {}      # pair -> GridState
+        self._configs: Dict[str, GridConfig] = {}         # pair -> optimizer-provided GridConfig
+        self._config: Dict[str, Any] = {}                 # module bootstrap config
+        self._defer_counts: Dict[str, int] = {}           # pair -> consecutive defer count
         self._entry_quality_evaluator: EntryQualityEvaluator = EntryQualityEvaluator({})
         self._logger = logging.getLogger(f"algo_system.{self.module_id}")
 
     # ------------------------------------------------------------------
     # Lifecycle hooks
     # ------------------------------------------------------------------
-
     def initialize(self, ctx: ModuleContext) -> None:
-        """
-        Validate and cache module config from ``SharedState``.
+        """Validate and cache module config from ``SharedState``.
 
-        Config is expected under the key ``(self.module_id, "config")`` in
-        the shared state dict.  If not found, sensible defaults are applied.
-
-        Parameters
-        ----------
-        ctx:
-            The ``ModuleContext`` provided by the orchestrator.
-
-        Raises
-        ------
-        ValueError
-            If any required config value is out of bounds.
+        Bootstrap config keys (used when no optimizer-derived ``GridConfig``
+        exists for a pair):
+          * ``upper_bound_pct`` — fraction of current_rate above midprice
+          * ``lower_bound_pct`` — fraction of current_rate below midprice
+          * ``grid_count``     — desired number of levels
+          * ``initial_stake``  — total stake split across grid levels
         """
         raw_cfg = ctx.shared_state.get(self.module_id, "config") or {}
 
@@ -150,8 +128,6 @@ class GridTradingModule(IAlgoModule):
             "grid_count": grid_count,
             "initial_stake": initial_stake,
         }
-        # Build evaluator config: module defaults to no quality gating (threshold=0.0)
-        # unless explicitly set by the user in the algo_system module config.
         evaluator_cfg = {"entry_quality_threshold": 0.0, **raw_cfg}
         self._entry_quality_evaluator = EntryQualityEvaluator(evaluator_cfg)
         self._logger.info(
@@ -159,19 +135,7 @@ class GridTradingModule(IAlgoModule):
         )
 
     def on_bot_start(self, ctx: ModuleContext) -> None:
-        """
-        Restore persisted grid states from ``SharedState``.
-
-        Each pair in the current whitelist is checked for a previously saved
-        ``GridState`` dict.  Successfully restored states are loaded back into
-        ``self._grid_states``; any that fail to deserialise are skipped with a
-        warning so that the bot can continue with a fresh grid for that pair.
-
-        Parameters
-        ----------
-        ctx:
-            The ``ModuleContext`` provided by the orchestrator.
-        """
+        """Restore persisted grid states from ``SharedState``."""
         for pair in ctx.data_provider.current_whitelist():
             entry = ctx.shared_state.get(self.module_id, pair)
             if entry and entry.get("data"):
@@ -180,21 +144,12 @@ class GridTradingModule(IAlgoModule):
                     self._logger.info("Restored grid state for %s", pair)
                 except Exception as exc:
                     self._logger.warning(
-                        "Failed to restore grid state for %s: %s — starting fresh", pair, exc
+                        "Failed to restore grid state for %s: %s — starting fresh",
+                        pair, exc,
                     )
 
     def shutdown(self, ctx: ModuleContext) -> None:
-        """
-        Persist all active grid states to ``SharedState``.
-
-        This method must not raise — any per-pair serialisation error is caught
-        and logged so that other pairs are not affected.
-
-        Parameters
-        ----------
-        ctx:
-            The ``ModuleContext`` provided by the orchestrator.
-        """
+        """Persist all active grid states to ``SharedState``. Never raises."""
         for pair, state in self._grid_states.items():
             try:
                 ctx.shared_state.set(self.module_id, pair, state.to_dict())
@@ -207,31 +162,10 @@ class GridTradingModule(IAlgoModule):
     # ------------------------------------------------------------------
     # Per-candle methods
     # ------------------------------------------------------------------
-
     def populate_indicators(
         self, df: DataFrame, metadata: dict, ctx: ModuleContext
     ) -> DataFrame:
-        """
-        Attach the ADX indicator column used for entry quality gating.
-
-        The column is named ``_{module_id}_adx`` to avoid collisions with
-        columns from other modules.  If ``talib`` is not installed or raises,
-        the column is silently omitted and entry quality gating is skipped.
-
-        Parameters
-        ----------
-        df:
-            OHLCV DataFrame for the pair.
-        metadata:
-            Freqtrade pair metadata dict.
-        ctx:
-            The shared ``ModuleContext``.
-
-        Returns
-        -------
-        DataFrame
-            The input DataFrame with the ADX column added when available.
-        """
+        """Attach the ADX indicator column for entry quality gating."""
         try:
             import talib  # noqa: PLC0415 — optional dependency
 
@@ -247,53 +181,72 @@ class GridTradingModule(IAlgoModule):
     def generate_entry_signal(
         self, df: DataFrame, metadata: dict, ctx: ModuleContext
     ) -> ModuleSignal:
-        """
-        Emit an entry signal to open the initial grid position.
+        """Emit an entry signal AND lazily build the grid for this pair.
 
-        Once a grid is active for this pair, the method returns an empty
-        ``ModuleSignal`` (no opinion) because ``adjust_position()`` handles all
-        subsequent trades.
+        Lazy initialisation lives here (not in ``adjust_position``) because
+        ``df`` is available — the unified ``GridCalculator`` needs candle data
+        for VWAP midprice, log-scale levels, and indicator-driven auto-tuning.
 
-        Entry quality gating
-        --------------------
-        1. ADX > 30 indicates a trending market — grid trading performs poorly
-           in trends, so entry is deferred and a consecutive-defer counter is
-           incremented.
-        2. If deferred for more than 20 consecutive candles a warning is logged
-           (but deferral still applies — the market has not become range-bound).
-        3. When conditions are acceptable the defer counter is reset and an
-           entry signal with ``confidence=0.8`` is returned.
-
-        Parameters
-        ----------
-        df:
-            OHLCV + indicators DataFrame.
-        metadata:
-            Freqtrade pair metadata dict (must contain ``"pair"`` key).
-        ctx:
-            The shared ``ModuleContext``.
-
-        Returns
-        -------
-        ModuleSignal
-            ``enter_long=True`` with ``entry_tag`` prefixed by ``module_id``
-            when conditions are met; an empty ``ModuleSignal()`` otherwise.
+        Once a grid exists (regardless of ``is_active`` state), no further
+        entry signals are emitted: ``adjust_position`` takes over.
         """
         pair = metadata.get("pair", getattr(ctx, "pair", ""))
 
-        # Grid already running — position adjustment handles everything
-        if pair in self._grid_states and self._grid_states[pair].is_active():
+        # Already have a grid for this pair — adjust_position will handle subsequent trades
+        if pair in self._grid_states:
             return ModuleSignal()
 
-        # Entry quality gating via EntryQualityEvaluator
+        # Entry quality gating
         defer_count = self._defer_counts.get(pair, 0)
-        qualifies, rationale = self._entry_quality_evaluator.is_quality_entry(pair, df, defer_count)
+        qualifies, rationale = self._entry_quality_evaluator.is_quality_entry(
+            pair, df, defer_count
+        )
         if not qualifies:
             self._defer_counts[pair] = defer_count + 1
             self._logger.debug("Entry deferred for %s: %s", pair, rationale)
             return ModuleSignal()
 
         self._defer_counts[pair] = 0
+
+        # Build the grid using current candle data
+        try:
+            current_rate = float(df["close"].iloc[-1])
+        except Exception as exc:
+            self._logger.error(
+                "generate_entry_signal: cannot read current rate for %s (%s); skipping entry",
+                pair, exc,
+            )
+            return ModuleSignal()
+
+        try:
+            cfg = self._resolve_config(pair, ctx) or self._build_bootstrap_config(current_rate)
+            midprice = GridCalculator.calculate_midprice(df, cfg)
+            levels = GridCalculator.generate_levels(cfg, midprice, df=df)
+            if len(levels) < 2:
+                self._logger.warning(
+                    "generate_entry_signal: %s produced %d level(s); skipping entry",
+                    pair, len(levels),
+                )
+                return ModuleSignal()
+            self._grid_states[pair] = GridState(
+                pair=pair,
+                upper_bound=max(levels),
+                lower_bound=min(levels),
+                grid_levels=levels,
+                filled_levels=set(),
+                initial_entry_price=current_rate,
+                created_at=datetime.now(timezone.utc),
+            )
+            self._logger.info(
+                "Grid built for %s: midprice=%.6f levels=%d range=[%.6f, %.6f]",
+                pair, midprice, len(levels), min(levels), max(levels),
+            )
+        except Exception as exc:
+            self._logger.error(
+                "generate_entry_signal: failed to build grid for %s: %s", pair, exc
+            )
+            return ModuleSignal()
+
         return ModuleSignal(
             enter_long=True,
             entry_tag=f"{self.module_id}:initial_entry",
@@ -303,33 +256,16 @@ class GridTradingModule(IAlgoModule):
     def generate_exit_signal(
         self, df: DataFrame, metadata: dict, ctx: ModuleContext
     ) -> ModuleSignal:
-        """
-        Grid exits are driven by ``adjust_position()`` partial sells.
+        """Grid exits are driven by ``adjust_position()`` partial sells.
 
         This method always returns an empty ``ModuleSignal`` — the module
-        never emits an explicit close signal.  The grid is wound down through
-        successive partial sells as the price climbs through filled levels.
-
-        Parameters
-        ----------
-        df:
-            OHLCV + indicators DataFrame.
-        metadata:
-            Freqtrade pair metadata dict.
-        ctx:
-            The shared ``ModuleContext``.
-
-        Returns
-        -------
-        ModuleSignal
-            Always an empty signal (no opinion on exit).
+        never emits an explicit close signal.
         """
         return ModuleSignal()
 
     # ------------------------------------------------------------------
     # Position adjustment — core grid trading logic
     # ------------------------------------------------------------------
-
     def adjust_position(  # noqa: PLR0913
         self,
         trade: Any,
@@ -340,176 +276,158 @@ class GridTradingModule(IAlgoModule):
         max_stake: float,
         ctx: ModuleContext,
     ) -> Optional[float]:
-        """
-        Core grid trading logic called every candle for every open trade.
+        """Core grid trading logic called every candle for every open trade.
+
+        The grid is assumed to have been built by ``generate_entry_signal``;
+        if no state exists this method is a no-op (defence-in-depth — should
+        not happen in normal flow).
 
         Algorithm
         ---------
-        1. If no ``GridState`` exists for this pair, create one centred on
-           ``current_rate`` using the configured bounds and level count.
-        2. Compute which grid levels were crossed *downward* since the previous
-           candle (buy triggers).  If any, execute a buy at the nearest level
-           provided the stake fits within ``max_stake`` and the position is
-           within the grid range.
-        3. Compute which *filled* grid levels were crossed *upward* since the
-           previous candle (sell triggers).  If any, execute a partial sell at
-           the nearest level.
-
-        Previous-rate proxy
-        -------------------
-        Freqtrade does not pass the previous candle's close here, so the trade's
-        ``open_rate`` is used as a conservative proxy for the starting price of
-        the current candle.  This may miss crossings on the very first candle
-        after entry; that is acceptable and results in no action rather than a
-        false trigger.
-
-        Parameters
-        ----------
-        trade:
-            The freqtrade ``Trade`` object for the open position.
-        current_time:
-            UTC ``datetime`` of the current candle close.
-        current_rate:
-            Current market price for the pair.
-        current_profit:
-            Current profit/loss as a fraction (e.g. ``0.05`` = 5 %).
-        min_stake:
-            Minimum stake amount accepted by the exchange, or ``None``.
-        max_stake:
-            Maximum stake amount the bot is allowed to use.
-        ctx:
-            The shared ``ModuleContext``.
-
-        Returns
-        -------
-        float or None
-            Positive value to add stake (buy); negative to reduce position
-            (partial sell); ``None`` for no action.
+        1. Read previous-candle price from ``state.last_price`` (or fall back to
+           ``state.initial_entry_price`` on the very first candle after entry).
+        2. Compute downward-crossed levels (buy triggers); execute the
+           closest unfilled level if stake fits.
+        3. Compute upward-crossed *filled* levels (sell triggers); execute a
+           partial sell at the lowest such level.
+        4. Always update ``state.last_price`` to the current rate so the next
+           call has a correct ``prev_rate``.
         """
         pair = getattr(trade, "pair", getattr(ctx, "pair", ""))
 
-        # Initialise grid if not yet present
-        if pair not in self._grid_states:
-            grid_state = self._initialize_grid(pair, current_rate)
-            if grid_state is None:
-                return None
-            self._grid_states[pair] = grid_state
-
-        state = self._grid_states[pair]
-
-        # Previous-rate proxy: use the last price seen by this module.
-        # trade.open_rate is the *initial entry* price and never changes — using
-        # it as prev_rate permanently anchors the crossing window at entry,
-        # making levels below open_rate permanently invisible after the first candle.
-        prev_rate: float = self._last_prices.get(pair, current_rate)
-
-        # ------------------------------------------------------------------
-        # Downward crossing → buy trigger
-        # ------------------------------------------------------------------
-        crossed_down: List[float] = self._calculator.get_crossed_levels_down(
-            prev_rate, current_rate, state.grid_levels
-        )
-        if crossed_down:
-            level = crossed_down[0]  # closest level first (sorted desc)
-            if not state.is_level_filled(level) and state.is_in_range(current_rate):
-                stake_per_level = self._config["initial_stake"] / state.grid_count
-                if min_stake is not None and stake_per_level < min_stake:
-                    stake_per_level = min_stake
-                if stake_per_level <= max_stake:
-                    self._logger.debug(
-                        "Grid BUY at level %.6f for %s (stake=%.4f)",
-                        level,
-                        pair,
-                        stake_per_level,
-                    )
-                    # Optimistically mark filled so the same level is not
-                    # re-triggered on the next candle while the order is pending.
-                    # on_order_filled will confirm the fill; if the order is
-                    # rejected the level stays "filled" (conservative — no duplicate buys).
-                    state.mark_filled(level)
-                    self._last_prices[pair] = current_rate
-                    return stake_per_level
-
-        # ------------------------------------------------------------------
-        # Upward crossing through filled level → sell trigger
-        # ------------------------------------------------------------------
-        crossed_up: List[float] = self._calculator.get_crossed_levels_up(
-            prev_rate, current_rate, state.grid_levels, state.filled_levels
-        )
-        if crossed_up:
-            level = crossed_up[0]  # lowest filled level crossed first
-            stake_per_level = self._config["initial_stake"] / state.grid_count
+        state = self._grid_states.get(pair)
+        if state is None:
             self._logger.debug(
-                "Grid SELL at level %.6f for %s (stake=%.4f)",
-                level,
+                "adjust_position called for %s with no GridState — skipping (entry signal must run first)",
                 pair,
-                stake_per_level,
             )
-            # Negative stake signals a partial sell to freqtrade
-            self._last_prices[pair] = current_rate
-            return -stake_per_level
+            return None
 
-        self._last_prices[pair] = current_rate
+        # Previous-rate proxy: state.last_price after first cycle, otherwise initial_entry_price
+        prev_rate: float = (
+            state.last_price
+            if state.last_price is not None
+            else (state.initial_entry_price if state.initial_entry_price is not None else current_rate)
+        )
+
+        try:
+            # Downward crossing → buy trigger
+            crossed_down: List[float] = GridCalculator.levels_crossed_down(
+                prev_rate, current_rate, state.grid_levels
+            )
+            if crossed_down:
+                level = crossed_down[0]  # closest crossed level (sorted desc)
+                if not state.is_level_filled(level) and state.is_in_range(current_rate):
+                    stake_per_level = self._config["initial_stake"] / state.grid_count
+                    if min_stake is not None and stake_per_level < min_stake:
+                        stake_per_level = min_stake
+                    if stake_per_level <= max_stake:
+                        self._logger.debug(
+                            "Grid BUY at level %.6f for %s (stake=%.4f)",
+                            level, pair, stake_per_level,
+                        )
+                        # Optimistically mark filled so the same level is not
+                        # re-triggered while the order is pending.
+                        state.mark_filled(level)
+                        state.update_last_price(current_rate)
+                        return stake_per_level
+
+            # Upward crossing through filled level → sell trigger
+            crossed_up: List[float] = GridCalculator.levels_crossed_up(
+                prev_rate, current_rate, state.grid_levels, filled=state.filled_levels
+            )
+            if crossed_up:
+                level = crossed_up[0]  # lowest filled level crossed first
+                stake_per_level = self._config["initial_stake"] / state.grid_count
+                self._logger.debug(
+                    "Grid SELL at level %.6f for %s (stake=%.4f)",
+                    level, pair, stake_per_level,
+                )
+                state.update_last_price(current_rate)
+                return -stake_per_level
+
+        finally:
+            # Always update prev-rate marker, even on no-op candles.
+            state.update_last_price(current_rate)
+
         return None
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Config resolution
     # ------------------------------------------------------------------
+    def _resolve_config(
+        self, pair: str, ctx: ModuleContext
+    ) -> Optional[GridConfig]:
+        """Return an optimizer-provided ``GridConfig`` for *pair*, or ``None``.
 
-    def _initialize_grid(self, pair: str, current_rate: float) -> Optional[GridState]:
+        Resolution order:
+          1. In-memory cache (``self._configs[pair]``).
+          2. Canonical SharedState key ``(self.module_id, f"{pair}:config")``.
+          3. Optuna-style key ``(self.module_id, f"optuna:{symbol}")`` where
+             ``symbol`` is ``pair.split("/")[0].split(".")[0]`` (so
+             ``"TSLA.US/USD"`` → ``"TSLA"``).
+
+        Returns ``None`` if no optimizer-provided config exists. Callers that
+        need a config either way should use ``_build_bootstrap_config()`` as
+        the fallback.
         """
-        Create a new ``GridState`` centred on ``current_rate``.
+        cached = self._configs.get(pair)
+        if cached is not None:
+            return cached
 
-        Parameters
-        ----------
-        pair:
-            Trading pair string.
-        current_rate:
-            Current market price used as the centre of the grid.
+        # 1) canonical pair-keyed entry
+        entry = ctx.shared_state.get(self.module_id, f"{pair}:config")
+        if entry and entry.get("data"):
+            try:
+                cfg = GridConfig.from_dict(entry["data"])
+                self._configs[pair] = cfg
+                self._logger.info("Loaded GridConfig for %s from SharedState", pair)
+                return cfg
+            except Exception as exc:
+                self._logger.warning(
+                    "Failed to load GridConfig for %s: %s", pair, exc
+                )
 
-        Returns
-        -------
-        GridState or None
-            A freshly constructed ``GridState`` on success; ``None`` if the
-            ``GridCalculator`` or ``GridState`` raises a ``ValueError`` (e.g.
-            degenerate bounds).
+        # 2) Optuna-style entry (bare symbol, no exchange suffix)
+        symbol = pair.split("/")[0].split(".")[0]
+        entry = ctx.shared_state.get(self.module_id, f"optuna:{symbol}")
+        if entry and entry.get("data"):
+            try:
+                cfg = GridConfig.from_dict(entry["data"])
+                self._configs[pair] = cfg
+                self._logger.info(
+                    "Loaded Optuna GridConfig for %s (symbol=%s)", pair, symbol
+                )
+                return cfg
+            except Exception as exc:
+                self._logger.warning(
+                    "Failed to load Optuna GridConfig for %s (symbol=%s): %s",
+                    pair, symbol, exc,
+                )
+
+        return None
+
+    def _build_bootstrap_config(self, current_rate: float) -> GridConfig:
+        """Build a default GridConfig from the module's bootstrap config.
+
+        Used by ``generate_entry_signal`` when ``_resolve_config`` returns
+        ``None``. Not cached — depends on ``current_rate``.
         """
-        try:
-            upper_pct: float = self._config["upper_bound_pct"]
-            lower_pct: float = self._config["lower_bound_pct"]
-            count: int = self._config["grid_count"]
-
-            upper = current_rate * (1.0 + upper_pct)
-            lower = current_rate * (1.0 - lower_pct)
-            levels = self._calculator.calculate_levels(lower, upper, count)
-
-            state = GridState(
-                pair=pair,
-                upper_bound=upper,
-                lower_bound=lower,
-                grid_count=count,
-                grid_levels=levels,
-                filled_levels=set(),
-                initial_entry_price=current_rate,
-                created_at=datetime.now(timezone.utc),
-            )
-            self._logger.info(
-                "Grid initialised for %s: lower=%.6f upper=%.6f count=%d levels=%s",
-                pair,
-                lower,
-                upper,
-                count,
-                [f"{lv:.6f}" for lv in levels],
-            )
-            return state
-        except ValueError as exc:
-            self._logger.error("Failed to initialise grid for %s: %s", pair, exc)
-            return None
+        upper_pct = self._config["upper_bound_pct"]
+        lower_pct = self._config["lower_bound_pct"]
+        count = max(2, int(self._config["grid_count"]))
+        grid_range = current_rate * (upper_pct + lower_pct)
+        grid_distance = grid_range / count
+        cfg = GridConfig(grid_distance=grid_distance, grid_range=grid_range)
+        self._logger.debug(
+            "Bootstrap GridConfig: range=%.6f distance=%.6f (current_rate=%.6f)",
+            grid_range, grid_distance, current_rate,
+        )
+        return cfg
 
     # ------------------------------------------------------------------
     # Order-fill hook
     # ------------------------------------------------------------------
-
     def on_order_filled(
         self,
         pair: str,
@@ -518,26 +436,7 @@ class GridTradingModule(IAlgoModule):
         current_time: Any,
         ctx: ModuleContext,
     ) -> None:
-        """
-        Mark the nearest grid level as filled when a buy order completes.
-
-        The fill price is read from ``order.price`` (limit) or
-        ``order.average`` (market) if available.  If neither attribute exists
-        no state change is made and a debug message is logged.
-
-        Parameters
-        ----------
-        pair:
-            Trading pair string.
-        trade:
-            The freqtrade ``Trade`` object after the fill.
-        order:
-            The freqtrade ``Order`` object that was filled.
-        current_time:
-            UTC ``datetime`` at which the fill was processed.
-        ctx:
-            The shared ``ModuleContext``.
-        """
+        """Mark/unmark the nearest grid level when a buy/sell order completes."""
         if pair not in self._grid_states:
             return
 
@@ -553,65 +452,39 @@ class GridTradingModule(IAlgoModule):
             )
             return
 
-        nearest = self._calculator.get_nearest_level(fill_price, state.grid_levels)
+        nearest = GridCalculator.nearest_level(fill_price, state.grid_levels)
         if nearest is not None:
             order_side: str = getattr(order, "side", "buy")
             if order_side == "sell":
-                # Sell confirmed — free the level so it can be rebought later
                 state.mark_unfilled(nearest)
                 self._logger.debug(
                     "Marked level %.6f unfilled for %s after sell fill (fill_price=%.6f)",
-                    nearest,
-                    pair,
-                    fill_price,
+                    nearest, pair, fill_price,
                 )
             else:
-                # Buy confirmed — mark filled (may already be set optimistically)
                 state.mark_filled(nearest)
                 self._logger.debug(
                     "Marked level %.6f filled for %s (fill_price=%.6f)",
-                    nearest,
-                    pair,
-                    fill_price,
+                    nearest, pair, fill_price,
                 )
 
     # ------------------------------------------------------------------
     # Introspection
     # ------------------------------------------------------------------
-
     def get_module_state(self, pair: str) -> Dict[str, Any]:
-        """
-        Return a JSON-serialisable snapshot of grid state for *pair*.
-
-        Parameters
-        ----------
-        pair:
-            Trading pair string.
-
-        Returns
-        -------
-        dict
-            ``GridState.to_dict()`` output when a grid exists, otherwise
-            an empty dict.
-        """
+        """Return a JSON-serialisable snapshot of grid state for *pair*."""
         state = self._grid_states.get(pair)
         if state is None:
             return {}
         return state.to_dict()
 
     def reset_module_state(self, pair: str) -> None:
-        """
-        Discard all per-pair internal state for *pair*.
+        """Discard all per-pair internal state for *pair*.
 
-        Called by the orchestrator when a pair is removed from the whitelist
-        or the module transitions to ``ModuleState.INACTIVE``.
-
-        Parameters
-        ----------
-        pair:
-            Trading pair string.
+        Pops the ``GridState``, defer counter, and any cached ``GridConfig``.
+        ``last_price`` lived on the ``GridState`` so it disappears with it.
         """
         self._grid_states.pop(pair, None)
         self._defer_counts.pop(pair, None)
-        self._last_prices.pop(pair, None)
+        self._configs.pop(pair, None)
         self._logger.info("Grid state reset for %s", pair)
